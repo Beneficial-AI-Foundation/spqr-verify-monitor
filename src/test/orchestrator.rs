@@ -42,7 +42,14 @@ where
     <K as MessagingScka>::CkaOutput: PartialEq + Debug,
 {
     pub fn new<R: CryptoRng>(rng: &mut R) -> Result<Self, Error> {
+        #[cfg(feature = "monitor")]
+        {
+            crate::monitor::start_session();
+            crate::monitor::set_party(true);
+        }
         let alex = K::init_a(rng)?;
+        #[cfg(feature = "monitor")]
+        crate::monitor::set_party(false);
         let blake = K::init_b(rng)?;
 
         Ok(Self {
@@ -95,6 +102,8 @@ where
     }
 
     pub fn send<R: CryptoRng>(&mut self, is_alex: bool, rng: &mut R) -> Result<bool, Error> {
+        #[cfg(feature = "monitor")]
+        crate::monitor::set_party(is_alex);
         let mut emitted_key = false;
         let mut emitted_ep: Option<Epoch> = None;
         {
@@ -127,6 +136,8 @@ where
     }
 
     pub fn receive_in_order(&mut self, is_alex: bool) -> Result<bool, Error> {
+        #[cfg(feature = "monitor")]
+        crate::monitor::set_party(is_alex);
         let mut emitted_key = false;
         let mut emitted_ep: Option<Epoch> = None;
         {
@@ -159,6 +170,8 @@ where
     }
 
     pub fn receive_at(&mut self, is_alex: bool, i: usize) -> Result<bool, Error> {
+        #[cfg(feature = "monitor")]
+        crate::monitor::set_party(is_alex);
         let mut emitted_key = false;
         let mut emitted_ep: Option<Epoch> = None;
         {
@@ -206,6 +219,8 @@ where
     }
 
     pub fn receive_all(&mut self, is_alex: bool) -> Result<bool, Error> {
+        #[cfg(feature = "monitor")]
+        crate::monitor::set_party(is_alex);
         let mut emitted_ep: Option<Epoch> = None;
         let mut emitted_key = false;
         let mut num_received = 0usize;
@@ -290,6 +305,17 @@ struct EpochVulnsetInfo {
     a_end: usize,
     b_start: usize,
     b_end: usize,
+}
+
+#[cfg(feature = "monitor")]
+impl<K> Drop for OrchestratorBase<K>
+where
+    K: MessagingScka,
+    <K as MessagingScka>::CkaOutput: PartialEq + Debug,
+{
+    fn drop(&mut self) {
+        crate::monitor::end_session();
+    }
 }
 
 pub struct HealingHistogramEntry {

@@ -17,7 +17,15 @@ impl Scka for states::States {
         self,
         rng: &mut R,
     ) -> Result<(SendOutput, states::Message, Self), Error> {
-        let states::Send { msg, key, state } = self.send(rng)?;
+        #[cfg(feature = "monitor")]
+        let pre = {
+            crate::monitor::begin_op();
+            crate::monitor::state_info(&self)
+        };
+        let r = self.send(rng);
+        #[cfg(feature = "monitor")]
+        crate::monitor::send_step(pre, &r);
+        let states::Send { msg, key, state } = r?;
 
         Ok((
             SendOutput {
@@ -33,7 +41,15 @@ impl Scka for states::States {
     where
         Self: Sized,
     {
-        let states::Recv { key, state } = self.recv(msg)?;
+        #[cfg(feature = "monitor")]
+        let pre = {
+            crate::monitor::begin_op();
+            crate::monitor::state_info(&self)
+        };
+        let r = self.recv(msg);
+        #[cfg(feature = "monitor")]
+        crate::monitor::recv_step(pre, msg, &r);
+        let states::Recv { key, state } = r?;
         Ok((
             ReceiveOutput {
                 output_key: key.map(|es| (es.epoch, es.secret)),

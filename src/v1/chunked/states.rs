@@ -56,10 +56,14 @@ pub struct Recv {
 
 impl States {
     pub(crate) fn init_a(auth_key: &[u8]) -> Self {
+        #[cfg(feature = "monitor")]
+        crate::monitor::init("a", auth_key);
         Self::KeysUnsampled(send_ek::KeysUnsampled::new(auth_key))
     }
 
     pub(crate) fn init_b(auth_key: &[u8]) -> Self {
+        #[cfg(feature = "monitor")]
+        crate::monitor::init("b", auth_key);
         Self::NoHeaderReceived(send_ct::NoHeaderReceived::new(auth_key))
     }
 

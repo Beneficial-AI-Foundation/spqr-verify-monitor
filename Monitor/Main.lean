@@ -50,6 +50,18 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
         IO.println s!"  session {s}: PARTIAL, only operations 0..{n} of this session are checked"
         -- keep whole operations only
         sevs := cut
+    -- every operation other than the initializations (operation 0) belongs to one party
+    let mut owner : HashMap Nat String := {}
+    for e in sevs do
+      if e.op == 0 then continue
+      match owner[e.op]? with
+      | some p =>
+        if p != e.party then
+          ok := false
+          IO.println s!"  session {s}: REJECTED: line {e.line}: operation {e.op} has events of \
+            parties {p} and {e.party}"
+          break
+      | none => owner := owner.insert e.op e.party
     let mut keys : HashMap String (List BraidModel.Key) := {}
     for p in ["A", "B"] do
       let pevs := sevs.filter (·.party == p)

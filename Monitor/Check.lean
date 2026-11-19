@@ -174,7 +174,7 @@ def explainMissing (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) : Obs MC
       match Q.keyGen r with
       | none => "no generate call for the randomness"
       | some kg => match Auth.macHdrO Q a e kg.2.1 with
-        | none => "no hmac call for the header MAC"
+        | none => "no hmac call with the key and data of the header MAC"
         | some _ => "no chunk of the header encoder"
     | .headerReceived e a hdr _ =>
       match Q.encaps1 hdr r with
@@ -202,16 +202,17 @@ def explainMissing (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) : Obs MC
             | some ss => match Auth.updateO Q a e ss with
               | none => "no hkdf call for KDF_AUTH"
               | some a' => match Auth.macCtO Q a' e (ct1 ++ msg.take Q.ct2Size) with
-                | none => "no hmac call for the ciphertext MAC (verify_ct)"
+                | none => "no hmac call with the key and data of the ciphertext MAC (verify_ct)"
                 | some _ => "unknown"
         | .noHeaderReceived e a _ =>
           match Auth.macHdrO Q a e (msg.take Q.headerSize) with
-          | none => "no hmac call for the header MAC (verify_hdr)"
+          | none => "no hmac call with the key and data of the header MAC (verify_hdr)"
           | some _ => "unknown"
         | .ct1Sampled _ _ hdr .. | .ct1Acknowledged _ _ hdr .. =>
           match Q.ekMatches hdr msg with
           | none => "no ek_matches_header call"
-          | some _ => "no encaps2 or hmac call for the ct2 encoder"
+          | some _ => "no encaps2 call, or no hmac call with the key and data of the ciphertext \
+          MAC, for the ct2 encoder"
         | _ => "unknown"
 
 /-- Why `checkStep Q σ o` fails, for the report. -/
@@ -362,8 +363,12 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
       match checkStep Q σ obs with
       | some σ' => σ? := some σ'
       | none =>
+        let why := explainStep Q σ obs
+        let other := if (why.splitOn "hmac").length > 1 && T.hmac.size > 0 then
+            s!" (this operation logged {T.hmac.size} hmac call(s), on other keys or data)"
+          else ""
         firstFail := some s!"operation {o.op} (line {se.line}), {se.f} in {State.describe σ}, \
-          message {describeMsg (obsMsg obs)}: {explainStep Q σ obs}"
+          message {describeMsg (obsMsg obs)}: {why}{other}"
         σ? := none
     steps := steps.push (T.prims, obs)
   -- the verdict of the verified checker

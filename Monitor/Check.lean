@@ -117,7 +117,7 @@ def addCall (T : Tables) (e : Event) : Except String Tables := do
     return { T with ekMatches := m }
   | _ => return T
 
-/-- Add a decoder result and a parity chunk to a table. -/
+/-- Add a decoder result to a table. -/
 def addMessage (T : Tables) (d : MDec) (m : Option Bytes) : Except String Tables := do
   let t ← insertFn "decoder" T.message d m
   return { T with message := t }
@@ -283,6 +283,8 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
   if let some e := init.events.find? (·.isStep) then
     return fail s!"line {e.line}: step event in the initialization (operation 0)" 0
   let some ie := init.events.find? (·.f == "init") | return fail "no init event" 0
+  if (init.events.filter (·.f == "init")).size != 1 then
+    return fail "two init events in the initialization" 0
   let role ← match (arg ie.args 0).bind Json.getStr? with
     | .ok r => pure r
     | .error err => return fail err 0
@@ -349,6 +351,9 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
             | .hdr c | .ek c | .ekCt1Ack c | .ct1 c | .ct2 c => some c
             | _ => none
           if let some c := c? then
+            if c.index != enc.2 % 65536 || c.data.length != 32 then
+              return fail s!"operation {o.op}: parity chunk #{c.index} of {c.data.length} bytes, \
+                expected index {enc.2 % 65536} and 32 bytes" steps.size
             match addParity T enc c, addParity all enc c with
             | .ok t, .ok a => T := t; all := a
             | .error err, _ | _, .error err => return fail s!"operation {o.op}: {err}" steps.size

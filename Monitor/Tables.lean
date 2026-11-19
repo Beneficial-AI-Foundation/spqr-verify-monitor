@@ -55,7 +55,8 @@ def zeroSalt : Bytes := List.replicate 32 (byte 0)
 def systematicChunk (m : Bytes) (i : Nat) : MChunk := ⟨i, (m.drop (32 * i)).take 32⟩
 
 open Std in
-/-- Tables of the logged calls of one party, keyed by the arguments. -/
+/-- Tables of logged calls, keyed by the arguments: one per operation of a party, plus one for
+all operations of the party (to check that each primitive is a function). -/
 structure Tables where
   /-- `hkdf(salt, ikm, info, len)` -/
   hkdf : HashMap (Bytes × Bytes × Bytes × Nat) Bytes := {}

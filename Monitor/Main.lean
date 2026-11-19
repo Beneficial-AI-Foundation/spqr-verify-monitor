@@ -13,7 +13,8 @@ For each file and each session in it, the program checks both parties (`Monitor.
 and the session-level properties (`Monitor.sessionChecks`), and prints one line per party and
 per check. With `--max-ops N` it checks only the events up to the `N`-th operation of each
 session, and says so: that is partial coverage of the file. The exit code is 0 when every
-check of every file passes. -/
+check of every file passes, 3 when every check passes on a prefix (`--max-ops`), and 1
+otherwise. -/
 
 open Lean Std Monitor
 
@@ -117,5 +118,10 @@ def main (args : List String) : IO UInt32 := do
     let mut ok := true
     for f in files do
       ok := (← checkFile f maxOps) && ok
-    IO.println (if ok then "ALL CHECKS PASSED" else "SOME CHECKS FAILED")
-    return if ok then 0 else 1
+    if !ok then
+      IO.println "SOME CHECKS FAILED"; return 1
+    if maxOps.isSome then
+      IO.println "ALL CHECKS PASSED ON THE CHECKED PREFIX (partial coverage, exit code 3)"
+      return 3
+    IO.println "ALL CHECKS PASSED"
+    return 0

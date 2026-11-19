@@ -279,10 +279,16 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
     | .ok ops => pure ops
     | .error err => return fail err 0
   let some init := ops[0]? | return fail "no initialization" 0
+  if init.op != 0 then return fail "no initialization (operation 0)" 0
+  if let some e := init.events.find? (·.isStep) then
+    return fail s!"line {e.line}: step event in the initialization (operation 0)" 0
   let some ie := init.events.find? (·.f == "init") | return fail "no init event" 0
   let role ← match (arg ie.args 0).bind Json.getStr? with
     | .ok r => pure r
     | .error err => return fail err 0
+  let expected := if party == "A" then "a" else "b"
+  if role != expected then
+    return fail s!"line {ie.line}: party {party} initializes with role {role}, not {expected}" 0
   let ss ← match (arg ie.args 1).bind jBytes with
     | .ok s => pure s
     | .error err => return fail err 0
@@ -294,7 +300,7 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
     | .ok t, .ok a => T0 := t; all := a
     | .error err, _ | _, .error err => return fail err 0
   let Q0 := T0.prims
-  let σ0? := if role == "a" then initAliceO Q0 ss else initBobO Q0 ss
+  let σ0? := if party == "A" then initAliceO Q0 ss else initBobO Q0 ss
   let some σ0 := σ0? | return fail "initialization: no hkdf call for the authenticator" 0
   -- learning pass: one table per operation, replayed with the checker's own step function
   let mut steps : Array (OPrims MEnc MDec MChunk × Obs MChunk) := #[]

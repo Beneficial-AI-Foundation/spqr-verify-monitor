@@ -50,6 +50,19 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
         IO.println s!"  session {s}: PARTIAL, only operations 0..{n} of this session are checked"
         -- keep whole operations only
         sevs := cut
+    -- only parties A and B; operations numbered 0, 1, 2, ... in file order
+    let mut last := 0
+    for e in sevs do
+      if e.party != "A" && e.party != "B" then
+        ok := false
+        IO.println s!"  session {s}: REJECTED: line {e.line}: unknown party {e.party}"
+        break
+      if e.op != last && e.op != last + 1 then
+        ok := false
+        IO.println s!"  session {s}: REJECTED: line {e.line}: operation {e.op} after \
+          operation {last}"
+        break
+      last := e.op
     -- every operation other than the initializations (operation 0) belongs to one party
     let mut owner : HashMap Nat String := {}
     for e in sevs do

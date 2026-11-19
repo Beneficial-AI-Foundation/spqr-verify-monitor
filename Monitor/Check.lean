@@ -380,6 +380,18 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
   | none =>
     fail (firstFail.getD "rejected (no diagnosis)") steps.size
 
+/-- The keys a party logged in its step events, in order, whether or not the checker accepted
+the party. -/
+def loggedKeys (evs : Array Event) (party : String) : List Key :=
+  evs.toList.filterMap fun e =>
+    if e.party == party && e.isStep then
+      match e.ret.getObjVal? "key" with
+      | .ok k => match parseKey k with
+        | .ok (some key) => some key
+        | _ => none
+      | .error _ => none
+    else none
+
 /-- The result of the session-level checks. -/
 structure SessionChecks where
   delivery : Except String Unit

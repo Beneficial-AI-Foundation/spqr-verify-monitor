@@ -79,7 +79,6 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
             parties {p} and {e.party}"
           break
       | none => owner := owner.insert e.op e.party
-    let mut keys : HashMap String (List BraidModel.Key) := {}
     for p in ["A", "B"] do
       let pevs := sevs.filter (·.party == p)
       if pevs.isEmpty then
@@ -87,7 +86,6 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
         IO.println s!"  session {s} party {p}: REJECTED: no events for this party"
         continue
       let r := checkParty p pevs
-      keys := keys.insert p r.keys
       match r.verdict with
       | .ok () =>
         IO.println s!"  session {s} party {p}: ACCEPTED ({r.operations} operations, \
@@ -95,7 +93,8 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
       | .error err =>
         ok := false
         IO.println s!"  session {s} party {p}: REJECTED: {err}"
-    let c := sessionChecks sevs (keys.getD "A" []) (keys.getD "B" [])
+    -- key agreement uses the keys the code logged, so it also holds for a rejected party
+    let c := sessionChecks sevs (loggedKeys sevs "A") (loggedKeys sevs "B")
     ok := (← report s "delivery" c.delivery) && ok
     ok := (← report s "key agreement" c.keys) && ok
     if !c.incompleteEpochs.isEmpty then

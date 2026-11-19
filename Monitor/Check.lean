@@ -20,7 +20,8 @@ For each party of a session the monitor:
 
 It also checks that each table entry is a function across the party's operations, and, for the
 session, the delivery of messages, the agreement of keys and the reuse of randomness (not
-covered by the theorems). -/
+covered by the theorems). A `tamper` event (a test changed a message in transit) is not a
+primitive call: the party check skips it, and the delivery check reads it. -/
 
 open Lean Std Aeneas Aeneas.Std BraidModel
 
@@ -387,7 +388,25 @@ structure SessionChecks where
   incompleteEpochs : List Nat
   randomness : Except String Unit
 
-/-- Delivery, key agreement and reuse of randomness for a session's events, in file order. -/
+/-- Whether `t` is a tampered copy of `m`: a chunk message with the same epoch, payload kind,
+chunk index and chunk length, and other chunk bytes. -/
+def tamperedCopy (m t : Msg MChunk) : Bool :=
+  let chunk : Payload MChunk → Option MChunk
+    | .hdr c | .ek c | .ekCt1Ack c | .ct1 c | .ct2 c => some c
+    | _ => none
+  match chunk m.payload, chunk t.payload with
+  | some c, some d =>
+    m.epoch == t.epoch && m.payload.ctorIdx == t.payload.ctorIdx && c.index == d.index &&
+      c.data.length == d.data.length && c.data != d.data
+  | _, _ => false
+
+/-- Delivery, key agreement and reuse of randomness for a session's events, in file order.
+
+Delivery: each receive consumes an equal earlier send of the other party. A `tamper` event of a
+party, with arguments `[orig, copy]`, says that the network made `copy` from `orig` and that the
+party receives `copy` next. `orig` must be an earlier send of the other party that no receive
+consumed, and `copy` a tampered copy of it (`tamperedCopy`). Then `copy` counts as one more send
+of the other party. `orig` stays available. -/
 def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.run do
   -- delivery: each receive consumes an equal earlier send of the other party
   let mut sent : HashMap (String × String) Nat := {}
@@ -407,6 +426,23 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
         | some (n + 1) => sent := sent.insert k n
         | _ => delivery := .error s!"line {e.line}: party {e.party} received a message that \
             party {peer} did not send"
+    else if e.f == "tamper" && delivery.isOk then
+      let peer := if e.party == "A" then "B" else "A"
+      match e.args[0]?, e.args[1]? with
+      | some o, some t =>
+        match parseMsg o, parseMsg t with
+        | .ok mo, .ok mt =>
+          if sent.getD (peer, o.compress) 0 == 0 then
+            delivery := .error s!"line {e.line}: party {e.party} received a tampered copy of a \
+              message that party {peer} did not send"
+          else if !tamperedCopy mo mt then
+            delivery := .error s!"line {e.line}: the tampered message differs from the original \
+              in more than the chunk bytes"
+          else
+            let kt := (peer, t.compress)
+            sent := sent.insert kt (sent.getD kt 0 + 1)
+        | _, _ => delivery := .error s!"line {e.line}: bad message in a tamper event"
+      | _, _ => delivery := .error s!"line {e.line}: a tamper event needs two messages"
     else if (e.f == "mlkem.generate" || e.f == "mlkem.encaps1") && randomness.isOk then
       let i := if e.f == "mlkem.generate" then 0 else 1
       if let some r := e.args[i]? then

@@ -7,8 +7,10 @@
 //! number, the party (`A` or `B`), the operation number, the function name, its arguments and
 //! its result, with bytes as lowercase hex. Operation 0 is a party's initialization; the test
 //! harness starts operation `n + 1` before each `States::send` or `States::recv` call
-//! (`begin_op`), and the call's step event ends it. The log is written only when the environment variable `SPQR_MONITOR_DIR`
-//! names a directory and the current thread has a party set (`set_party`). The file is
+//! (`begin_op`), and the call's step event ends it. A test that tampers with a message in
+//! transit writes a `tamper` event in the operation of the `recv` that receives the tampered
+//! message. The log is written only when the environment variable `SPQR_MONITOR_DIR` names a
+//! directory and the current thread has a party set (`set_party`). The file is
 //! `$SPQR_MONITOR_DIR/<thread name>.jsonl`. The Lean program `spqr-monitor` checks the log
 //! against `BraidModel`.
 
@@ -112,14 +114,28 @@ pub fn set_party(is_a: bool) {
     SINK.with(|s| s.borrow_mut().party = Some(if is_a { 'A' } else { 'B' }));
 }
 
+/// Run `f` with no events written: for a dry run of a call that is not part of the trace.
+#[cfg(test)]
+pub fn paused<T>(f: impl FnOnce() -> T) -> T {
+    let party = SINK.with(|s| s.borrow_mut().party.take());
+    let r = f();
+    SINK.with(|s| s.borrow_mut().party = party);
+    r
+}
+
 fn emit(f: &str, args: &str, ret: &str) {
+    emit_at(0, f, args, ret)
+}
+
+/// Write an event in operation `op + offset`, where `op` is the current operation.
+fn emit_at(offset: u64, f: &str, args: &str, ret: &str) {
     SINK.with(|s| {
         let mut s = s.borrow_mut();
         let Some(p) = s.party else { return };
         if !s.open() {
             return;
         }
-        let (session, op) = (s.session, s.op);
+        let (session, op) = (s.session, s.op + offset);
         let out = s.out.as_mut().expect("opened above");
         writeln!(
             out,
@@ -318,5 +334,17 @@ pub fn recv_step(pre: (&'static str, u64), msg: &Message, r: &Result<Recv, Error
         "States::recv",
         &format!("[{},{}]", state_args(pre), message(msg)),
         &ret,
+    );
+}
+
+#[cfg(test)]
+/// The network replaced the message `orig` of the peer by `tampered`, which the current party
+/// receives next. The event belongs to the operation of that `recv`, the next operation.
+pub fn tamper(orig: &Message, tampered: &Message) {
+    emit_at(
+        1,
+        "tamper",
+        &format!("[{},{}]", message(orig), message(tampered)),
+        "null",
     );
 }

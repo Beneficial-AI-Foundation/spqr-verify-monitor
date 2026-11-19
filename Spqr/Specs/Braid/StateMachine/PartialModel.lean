@@ -266,6 +266,8 @@ section Soundness
 
 variable {P : Prims Enc Dec Chunk} {Q : OPrims Enc Dec Chunk}
 
+/-- If `Auth.updateO Q a e k` returns `a'`, then every `P` that extends `Q` gives
+`Auth.update P a e k = a'`. -/
 theorem Auth.updateO_sound (hA : Agrees P Q) {a a' : Auth} {e : Nat} {k : Bytes}
     (h : Auth.updateO Q a e k = some a') : Auth.update P a e k = a' := by
   simp only [Auth.updateO, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
@@ -273,20 +275,28 @@ theorem Auth.updateO_sound (hA : Agrees P Q) {a a' : Auth} {e : Nat} {k : Bytes}
   obtain ⟨out, hout, rfl⟩ := h
   simp only [Auth.update, hA.kdfAuth _ _ _ _ hout]
 
+/-- If `Auth.initO Q e k` returns `a`, then every `P` that extends `Q` gives
+`Auth.init P e k = a`. -/
 theorem Auth.initO_sound (hA : Agrees P Q) {a : Auth} {e : Nat} {k : Bytes}
     (h : Auth.initO Q e k = some a) : Auth.init P e k = a :=
   Auth.updateO_sound hA h
 
+/-- If `Auth.macHdrO Q a e hdr` returns `t`, then every `P` that extends `Q` gives
+`Auth.macHdr P a e hdr = t`. -/
 theorem Auth.macHdrO_sound (hA : Agrees P Q) {a : Auth} {e : Nat} {hdr t : Bytes}
     (h : Auth.macHdrO Q a e hdr = some t) : Auth.macHdr P a e hdr = t := by
   simp only [Auth.macHdrO] at h
   simp only [Auth.macHdr, hA.protocolInfo, hA.toBytes, hA.mac _ _ _ h]
 
+/-- If `Auth.macCtO Q a e ct` returns `t`, then every `P` that extends `Q` gives
+`Auth.macCt P a e ct = t`. -/
 theorem Auth.macCtO_sound (hA : Agrees P Q) {a : Auth} {e : Nat} {ct t : Bytes}
     (h : Auth.macCtO Q a e ct = some t) : Auth.macCt P a e ct = t := by
   simp only [Auth.macCtO] at h
   simp only [Auth.macCt, hA.protocolInfo, hA.toBytes, hA.mac _ _ _ h]
 
+/-- If `ct2EncoderO Q e a es ct1 hdr ek` returns `enc`, then every `P` that extends `Q` gives
+`ct2Encoder P e a es ct1 hdr ek = enc`. -/
 theorem ct2EncoderO_sound (hA : Agrees P Q) {e : Nat} {a : Auth} {es ct1 hdr ek : Bytes}
     {enc : Enc} (h : ct2EncoderO Q e a es ct1 hdr ek = some enc) :
     ct2Encoder P e a es ct1 hdr ek = enc := by
@@ -313,7 +323,8 @@ theorem sendO_sound (hA : Agrees P Q) {σ : State Enc Dec} {r : Bytes}
     | (subst h; rfl)
     | (obtain ⟨⟨c, enc⟩, hce, rfl⟩ := h; simp only [send, hA.nextChunk _ _ hce])
 
-/-- The `ek` branches agree with the model's. -/
+/-- If `ekDoneO` returns `x`, then every `P` that extends `Q` gives `x` in the `ek` branches of
+transitions (9) and (11) of `receiveEq`. -/
 theorem ekDoneO_sound (hA : Agrees P Q) {e : Nat} {a : Auth} {hdr es ct1 : Bytes} {d' : Dec}
     {stay : Dec → State Enc Dec} {x : Option (State Enc Dec × Option Key)}
     (h : ekDoneO Q e a hdr es ct1 d' stay = some x) :
@@ -430,6 +441,8 @@ theorem receiveO_sound (hA : Agrees P Q) {σ : State Enc Dec} {m : Msg Chunk}
       · simp only [h1, h2, ↓reduceIte] at h ⊢
         exact receiveEqO_sound hA h
 
+/-- If `initAliceO Q ss` returns `σ`, then every `P` that extends `Q` gives
+`initAlice P ss = σ`. -/
 theorem initAliceO_sound (hA : Agrees P Q) {ss : Bytes} {σ : State Enc Dec}
     (h : initAliceO Q ss = some σ) : initAlice P ss = σ := by
   simp only [initAliceO, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,
@@ -437,6 +450,8 @@ theorem initAliceO_sound (hA : Agrees P Q) {ss : Bytes} {σ : State Enc Dec}
   obtain ⟨a, ha, rfl⟩ := h
   simp only [initAlice, Auth.initO_sound hA ha]
 
+/-- If `initBobO Q ss` returns `σ`, then every `P` that extends `Q` gives
+`initBob P ss = σ`. -/
 theorem initBobO_sound (hA : Agrees P Q) {ss : Bytes} {σ : State Enc Dec}
     (h : initBobO Q ss = some σ) : initBob P ss = σ := by
   simp only [initBobO, Option.bind_eq_bind, Option.bind_eq_some_iff, Option.pure_def,

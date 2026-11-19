@@ -42,6 +42,9 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
   let sessions := (evs.map (·.session)).toList.eraseDups
   let mut ok := true
   IO.println s!"{path}: {evs.size} events, {sessions.length} session(s)"
+  if sessions.isEmpty then
+    IO.println "  REJECTED: no events"
+    return false
   for s in sessions do
     let mut sevs := evs.filter (·.session == s)
     if let some n := maxOps then
@@ -78,7 +81,10 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
     let mut keys : HashMap String (List BraidModel.Key) := {}
     for p in ["A", "B"] do
       let pevs := sevs.filter (·.party == p)
-      if pevs.isEmpty then continue
+      if pevs.isEmpty then
+        ok := false
+        IO.println s!"  session {s} party {p}: REJECTED: no events for this party"
+        continue
       let r := checkParty p pevs
       keys := keys.insert p r.keys
       match r.verdict with

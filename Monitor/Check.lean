@@ -320,6 +320,15 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
       | .ok t, .ok a => T := t; all := a
       | .error err, _ | _, .error err => return fail s!"line {e.line}: {err}" steps.size
     if let some σ := σ? then
+      -- the state before the call, as the code logged it, is the model's state
+      let pre : Except String (Label × Nat) := do
+        return (← parseLabel (← (← arg se.args 0).getStr?), ← jNat (← arg se.args 1))
+      match pre with
+      | .error err => return fail s!"line {se.line}: {err}" steps.size
+      | .ok (l, ep) =>
+        if l != σ.label || ep != σ.epoch then
+          return fail s!"operation {o.op} (line {se.line}): the code's state before the call is \
+            {repr l} epoch {ep}, the model's is {State.describe σ}" steps.size
       -- the decoder result of a receive, at the decoder the model adds the chunk to
       match obs, decoded o with
       | .recvOk m .. , .ok (some (pts, res)) | .recvErr m, .ok (some (pts, res)) =>

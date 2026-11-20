@@ -13,7 +13,7 @@ it.
 | 1 | If the monitor accepts a party, then the party's logged steps are a `BraidModel` run for every primitive function that agrees with the logged primitive calls. | Lean theorems (section 2) |
 | 2 | On the unmodified code, the monitor accepts every party of every test trace, and the cross-party checks pass. | `honest` run (section 4) |
 | 3 | Six one-line changes to `src/` pass `cargo test`. On the eleven standard traces, the monitor rejects all 22 parties for each change, and names the operation and the missing primitive value. | mutants M1, M2, M6, R1, R2, R3 (section 5) |
-| 4 | A dropped verification result (R4) passes `cargo test`, and the monitor accepts R4 on the standard traces. A test driver that tampers with messages in transit exposes it: the monitor rejects the first party that accepts a tampered chunk. The tamper tests also fail on their own key check. | mutant R4, tests `tamper_early` and `tamper_chaos` |
+| 4 | A dropped verification result (R4) passes `cargo test`, and the monitor accepts R4 on the standard traces. A test driver that tampers with chunks in transit exposes it: when a `Ct2` decoder that got a tampered chunk completes, the MAC check fails and R4 accepts anyway, and the monitor rejects that step. The tamper tests also fail on their own key check. | mutant R4, tests `tamper_early` and `tamper_chaos` |
 | 5 | Fixed KeyGen randomness (M5) is a valid model run. A separate check, outside the theorems, rejects it. | mutant M5 |
 
 The other material on the branch illustrates these results and adds no detection power:
@@ -134,15 +134,23 @@ sessions.
 | R3 `r3-mac-ct2-only` | 57 passed | 59 passed | 22/22 | 8/14 | none |
 | R4 `r4-verify-result-dropped` | 57 passed | both tamper tests fail | 0/22 | 2/6 | key agreement (tamper) |
 
-The tamper tests exist only with the feature `monitor`. When M1 or R4 accepts a tampered chunk,
+The tamper tests exist only with the feature `monitor`. A chunk that does not complete its
+decoder is accepted by every version of the code, because the MAC is checked only when the
+decoder completes. When M1 or R4 accepts a ciphertext that was decoded from a tampered chunk,
 the two parties derive different keys, and the test's own key check fails
-(`src/test/orchestrator.rs:76`). When M2 accepts a tampered header, a later receive returns
-`ErroneousDataReceived` and `tamper_chaos` fails. For R4 the monitor rejects the same runs, and
-it also names the step: "operation 546 (line 636), `States::recv` in `ekSentCt1Received` epoch
-1, message epoch 1 ct2 #17: the model's Receive() fails, the code accepted".
+(`src/test/orchestrator.rs:76`). When M2 accepts a header that was decoded from a tampered
+chunk, a later receive returns `ErroneousDataReceived` and `tamper_chaos` fails.
 
-The counts in the "Standard" column hold in every run. The rejected operations in the standard
-traces change from run to run (section 4).
+For R4 the monitor rejects the step where the decoder completes. In `tamper_chaos`, the tampered
+chunk completes the decoder: "operation 546 (line 636), `States::recv` in `ekSentCt1Received`
+epoch 1, message epoch 1 ct2 #17: the model's Receive() fails, the code accepted". In session 2
+of `tamper_early`, party A receives a tampered chunk at operation 176 and the monitor rejects
+operation 192, where the decoder completes. In session 1 of `tamper_early`, the tampered chunk is
+a header chunk, which R4 does not change, and the monitor accepts both parties.
+
+The "Standard" column was the same in each of our runs. A run finds a mutant only if it
+reaches the changed step, and the standard tests do not force that. The rejected operations in
+the standard traces change from run to run (section 4).
 
 ## 6. What the results do not show
 

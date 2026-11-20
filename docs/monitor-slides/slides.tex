@@ -332,10 +332,10 @@ theorem accepted_alice
     \item A tampering driver changes one byte of a \code{Hdr} or \code{Ct2} chunk in transit.
   \end{itemize}
   \centering
-  \includegraphics[height=4.4cm]{fig/r4-seq-a.pdf}
+  \includegraphics[height=4.6cm]{fig/r4-seq-a.pdf}
 
   \raggedright
-  {\scriptsize The model's \code{Receive()} fails, the mutant accepts and emits K3. The honest
+  {\scriptsize The model's \code{Receive()} fails, the mutant accepts and emits K1. The honest
   code fails at the MAC check and keeps its state: all 36 parties accepted.}
 \end{frame}
 
@@ -362,7 +362,7 @@ theorem accepted_alice
   \end{tikzpicture}
   \vspace{0.6em}
   \begin{itemize}\footnotesize
-    \item Under R4 with tampering, the key agreement check also fails: ``epoch 3: the parties'
+    \item Under R4 with tampering, the key agreement check also fails: ``epoch 2: the parties'
       secrets differ''.
   \end{itemize}
 \end{frame}

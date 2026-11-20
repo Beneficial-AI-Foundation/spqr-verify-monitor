@@ -387,7 +387,8 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
                 xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
                 out.append(f"<path d='M{xm - 6:.1f},{ym - 9:.1f} l9,7 l-5,1 l7,8 l-11,-6 l5,-1 "
                            f"z' fill='{RED}'/>")
-                out.append(svg_text(xm - d * 10, ym + 4, "tampered in transit", 11,
+                # Beside the mark, on the side of the sender, where the arrow is not.
+                out.append(svg_text(xm - d * 12, ym + 4, "tampered in transit", 11,
                                     "end" if d > 0 else "start", RED, weight="bold"))
     for i, party, diag in notes:
         y = y_of(i) + 16

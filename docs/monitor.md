@@ -96,9 +96,13 @@ the machine has little memory.
 
 Result on the branch (2026-11-20): `cargo test` 57 passed, the feature run 59 passed, 13
 traces (the eleven standard tests and the two tamper tests), 18 sessions. The monitor accepts all
-36 parties, and every cross-party check passes. In 15 of the 18 sessions, the last epoch has a key
-from one party only, because the test stops in the middle of an epoch; the report lists it as
-incomplete.
+36 parties, and every cross-party check passes. In most sessions (14 of 18 in this run), the last
+epoch has a key from one party only, because the test stops in the middle of an epoch. The report
+lists that epoch as incomplete.
+
+The standard tests draw their randomness from `OsRng`, so their traces, the operation numbers
+in the report and the count of incomplete epochs change from run to run. The two tamper tests
+use a fixed seed, so their traces are the same in every run.
 
 ## 5. Reproduce the mutant results
 
@@ -119,7 +123,7 @@ sessions.
 
 | Patch | `cargo test` | Feature run | Standard: rejected | Tamper: rejected / parties | Failed cross-party checks |
 |-------|--------------|-------------|--------------------|----------------------------|---------------------------|
-| M1 `m1-skip-verify-ct` | 57 passed | both tamper tests fail | 22/22 | 3/6 | key agreement (tamper) |
+| M1 `m1-skip-verify-ct` | 57 passed | both tamper tests fail | 22/22 | 2/6 | key agreement (tamper) |
 | M2 `m2-skip-verify-hdr` | 57 passed | `tamper_chaos` fails | 22/22 | 8/14 | none |
 | M5 `m5-keygen-randomness-fixed` | 57 passed | 59 passed | 0/22 | 0/14 | randomness reuse, 12 sessions |
 | M6 `m6-header-mac-label` | 57 passed | 59 passed | 22/22 | 14/14 | none |
@@ -128,11 +132,15 @@ sessions.
 | R3 `r3-mac-ct2-only` | 57 passed | 59 passed | 22/22 | 8/14 | none |
 | R4 `r4-verify-result-dropped` | 57 passed | both tamper tests fail | 0/22 | 2/6 | key agreement (tamper) |
 
-The tamper tests exist only with the feature `monitor`. When a mutant accepts a tampered chunk
-(M1, M2, R4), the two parties derive different keys, and the test's own key check fails. For R4
-the monitor rejects the same runs, and it also names the step: for example "operation 1147,
-`States::recv` in `ekSentCt1Received` epoch 2, ct2 #0: the model's Receive() fails, the code
-accepted".
+The tamper tests exist only with the feature `monitor`. When M1 or R4 accepts a tampered chunk,
+the two parties derive different keys, and the test's own key check fails
+(`src/test/orchestrator.rs:76`). When M2 accepts a tampered header, a later receive returns
+`ErroneousDataReceived` and `tamper_chaos` fails. For R4 the monitor rejects the same runs, and
+it also names the step: "operation 546 (line 636), `States::recv` in `ekSentCt1Received` epoch
+1, message epoch 1 ct2 #17: the model's Receive() fails, the code accepted".
+
+The counts in the "Standard" column hold in every run. The rejected operations in the standard
+traces change from run to run (section 4).
 
 ## 6. What the results do not show
 
@@ -145,3 +153,46 @@ accepted".
 - The monitor reports the first step that the model cannot explain, and names the missing
   primitive value. It does not name the cause: "on other keys or data" can mean a wrong key, a
   wrong epoch encoding or missing bytes.
+
+## 7. Compare with the UPPAAL and Veil replays
+
+`scripts/viz-compare.sh` replays session 1 of four mutant traces, and of the honest `chaos`
+trace, in the UPPAAL model and in the Veil model. It prints, for each party, the operation
+where the Lean monitor, UPPAAL and Veil reject. It reads the output directory of section 5.
+
+Prerequisites:
+
+- UPPAAL `verifyta` (tested with 5.1.0-beta5). Set `VERIFYTA` to its path.
+- For the Veil column, a built Veil checkout (tested with https://github.com/verse-lab/veil at
+  commit `4624379`; see `viz/veil/README.md`). Set `VEIL_DIR` to it. Without `VEIL_DIR`, the
+  script runs UPPAAL only.
+
+```bash
+VERIFYTA=/opt/uppaal/lib/app/bin/verifyta VEIL_DIR=~/veil scripts/viz-compare.sh /tmp/spqr-monitor-mutants
+```
+
+UPPAAL takes a few seconds. Veil takes about 25 minutes.
+
+Result on the branch (2026-11-20). The operation numbers of the `chaos` cases come from the run
+of section 5 and change from run to run.
+
+| Mutant, trace | Party | Lean monitor | UPPAAL | Veil |
+|---------------|-------|--------------|--------|------|
+| M1, `chaos` | A | op 572 | op 572 | op 572 |
+| M1, `chaos` | B | op 1133 | op 1133 | not reached |
+| R2, `chaos` | A | op 484 | op 484 | not reached |
+| R2, `chaos` | B | op 441 | op 441 | op 441 |
+| R3, `chaos` | A | op 316 | op 316 | not reached |
+| R3, `chaos` | B | op 275 | op 275 | op 275 |
+| R4, `tamper_chaos` | A | op 546 | op 546 | accepted |
+| R4, `tamper_chaos` | B | accepted | accepted | accepted |
+| honest, `chaos` | A, B | accepted | accepted | accepted |
+
+UPPAAL replays one party at a time and rejects at the same operation as the Lean monitor in
+every case. Veil replays both parties together and stops at the first rejection in trace order,
+so it reports one party per case ("not reached" for the other). Veil accepts R4: its model sees
+whether a MAC is absent, good or bad, but it does not compare the received MAC with the
+computed one. UPPAAL finds R4 because its translator compares the two MACs in Python and gives
+the model a bad token. Neither model checks the cryptographic values that the Lean monitor
+checks, so their agreement on these cases adds no detection power.
+

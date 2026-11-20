@@ -1,0 +1,67 @@
+/tmp/spqr-traces-R2-branch/test.messaging_scka.test.onlineoffline_healing.jsonl: 75740 events, 1 session(s)
+  session 1 party A: REJECTED: operation 246 (line 335), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 211 (line 292), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/test.messaging_scka.test.pingpong_healing.jsonl: 22931 events, 1 session(s)
+  session 1 party A: REJECTED: operation 355 (line 444), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 286 (line 367), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/test.messaging_scka.test.random_balanced_healing.jsonl: 14750 events, 1 session(s)
+  session 1 party A: REJECTED: operation 196 (line 285), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 172 (line 253), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/test.messaging_scka.test.random_balanced.jsonl: 14282 events, 1 session(s)
+  session 1 party A: REJECTED: operation 226 (line 315), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 202 (line 283), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/test.messaging_scka.test.random_balanced_out_of_order.jsonl: 14396 events, 1 session(s)
+  session 1 party A: REJECTED: operation 173 (line 262), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 156 (line 237), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.balanced_healing.jsonl: 14750 events, 1 session(s)
+  session 1 party A: REJECTED: operation 196 (line 285), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 172 (line 253), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.chaos.jsonl: 97899 events, 1 session(s)
+  session 1 party A: REJECTED: operation 660 (line 749), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 456 (line 537), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #81: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.onlineoffline_healing_unidir.jsonl: 74417 events, 1 session(s)
+  session 1 party A: REJECTED: operation 171 (line 260), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 144 (line 225), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.random_balanced.jsonl: 14518 events, 1 session(s)
+  session 1 party A: REJECTED: operation 185 (line 274), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 165 (line 246), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.random_balanced_out_of_order.jsonl: 14444 events, 1 session(s)
+  session 1 party A: REJECTED: operation 171 (line 260), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #3: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 155 (line 236), States::recv in BraidModel.Label.ekReceivedCt1Sampled epoch 1, message epoch 1 ekct1ack #37: missing primitive value: a primitive value of a payload without a decoder (ct2 encoder)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-R2-branch/v1.test.random_slow_alex_healing_auth_bidir.jsonl: 13853 events, 1 session(s)
+  session 1 party A: REJECTED: operation 267 (line 356), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 246 (line 327), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #35: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+SOME CHECKS FAILED

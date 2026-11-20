@@ -8,6 +8,19 @@ of the Rust code produced by [Aeneas](https://github.com/AeneasVerif/aeneas).
 
 Maintained by [The Beneficial AI Foundation](https://www.beneficialaifoundation.org/).
 
+## About this fork
+
+This fork of [Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify](https://github.com/Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify)
+adds a runtime monitor for the SPQR tests. The Rust tests write an event log, and a Lean program
+replays the events of each party through the Braid model. Read [`docs/monitor.md`](./docs/monitor.md)
+for the results and the commands that reproduce them.
+
+The monitor adds hooks to `src/`. The hooks compile only with the cargo feature `monitor`. With
+the feature off, the expanded crate is identical to upstream `main`.
+
+The soundness theorems of the monitor (`Spqr/Specs/Braid/StateMachine/PartialModel.lean` and
+`Monitor.lean`) are also proposed to upstream `main` in a separate pull request.
+
 ## Repository Structure
 
 | Path | Contents |

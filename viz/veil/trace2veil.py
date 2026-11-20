@@ -195,17 +195,24 @@ def query(sts, name: str) -> str:
     return f"sat trace [{name}] {{\n" + "\n".join(body) + "\n}\n"
 
 
-def start_state(sts, i: int):
-    """The SpqrBraid state before step `i`, read from the log: each party's state and epoch
-    after its last step, and every message sent so far."""
+def start_states(sts, starts) -> dict:
+    """Map each `i` in `starts` to the SpqrBraid state before step `i`, read from the log:
+    each party's state and epoch after its last step, and every message sent so far. One pass
+    over the steps."""
     lab = {"A": "keysUnsampled", "B": "noHeaderReceived"}
     ep = {"A": 1, "B": 1}
     sent = set()
-    for s in sts[:i]:
-        lab[s["party"]], ep[s["party"]] = s["label"], s["epoch"]
-        if s["action"] == "send":
-            sent.add((PARTIES[s["party"]], s["kind"], s["pre"][1]))
-    return lab, ep, sorted(sent)
+    want = set(starts)
+    out = {}
+    for i in range(max(want, default=-1) + 1):
+        if i in want:
+            out[i] = (dict(lab), dict(ep), sorted(sent))
+        if i < len(sts):
+            s = sts[i]
+            lab[s["party"]], ep[s["party"]] = s["label"], s["epoch"]
+            if s["action"] == "send":
+                sent.add((PARTIES[s["party"]], s["kind"], s["pre"][1]))
+    return out
 
 
 def init_block(state) -> str:
@@ -233,13 +240,13 @@ def lean_file(q: str, state=None) -> str:
     return head + q + "\n" + sep + tail
 
 
-def run(veil: str, sts, keep: str, tag: str, start: int = 0, length=None):
-    """Run the query of steps start .. start + length, from the logged state before `start`;
-    return (satisfiable, seconds, output)."""
+def run(veil: str, sts, keep: str, tag: str, start: int = 0, length=None, state=None):
+    """Run the query of steps start .. start + length, from `state`, the logged state before
+    `start` (`start_states`; None starts from the initial state); return (satisfiable,
+    seconds, output)."""
     if length is None:
         length = len(sts) - start
     path = os.path.join(keep, f"{tag}.lean")
-    state = start_state(sts, start) if start > 0 else None
     with open(path, "w") as f:
         f.write(lean_file(query(sts[start:start + length], tag), state))
     t = time.time()
@@ -304,11 +311,15 @@ def main():
         tag += "_anymac"
     W = a.window
     starts = list(range(0, len(sts), W))
+    # The logged state before each window; step 0 starts from the initial state.
+    states = start_states(sts, starts)
+    states[0] = None
     bad = None
     with ThreadPoolExecutor(a.jobs) as pool:
         for b in range(0, len(starts), a.jobs):
             batch = starts[b:b + a.jobs]
-            res = list(pool.map(lambda i: run(a.veil, sts, a.keep, f"{tag}_w{i}", i, W), batch))
+            res = list(pool.map(
+                lambda i: run(a.veil, sts, a.keep, f"{tag}_w{i}", i, W, states[i]), batch))
             for i, (ok, secs, _) in zip(batch, res):
                 print(f"steps {i}..{min(i + W, len(sts)) - 1}: {'sat' if ok else 'unsat'} "
                       f"({secs:.0f} s)", flush=True)
@@ -322,7 +333,7 @@ def main():
     lo, hi = 0, min(W, len(sts) - bad)  # length lo is sat, length hi is unsat
     while hi - lo > 1:
         mid = (lo + hi) // 2
-        ok, secs, _ = run(a.veil, sts, a.keep, f"{tag}_w{bad}_{mid}", bad, mid)
+        ok, secs, _ = run(a.veil, sts, a.keep, f"{tag}_w{bad}_{mid}", bad, mid, states[bad])
         print(f"steps {bad}..{bad + mid - 1}: {'sat' if ok else 'unsat'} ({secs:.0f} s)")
         lo, hi = (mid, hi) if ok else (lo, mid)
     s = sts[bad + hi - 1]

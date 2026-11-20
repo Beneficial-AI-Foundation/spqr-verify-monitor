@@ -22,6 +22,7 @@ import argparse
 import os
 import re
 import sys
+from collections import deque
 from html import escape
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -229,7 +230,37 @@ def overview(ops, rejects, title):
             + "".join(out) + "</svg>")
 
 
-def compact_rows(rows, rejects, recv_at):
+def match_messages(ops):
+    """Map each send operation to its deliveries, a list of (receiving operation, tampered).
+
+    Sends and receives are matched in file order. Each (sender, message) pair has a queue of
+    sends that are not yet delivered, and a receive takes the oldest send of its message. A
+    receive whose operation has a `tamper` event `[orig, copy]` got a tampered copy of `orig`;
+    it is a tampered delivery of the oldest send of `orig`. When the code rejects the copy, the
+    tamper driver (`src/test/orchestrator/tamper.rs`) later delivers the original, so that send
+    stays in its queue.
+    """
+    pending, deliveries = {}, {}
+    for o in ops:
+        if o.info is None:
+            continue
+        _, _, _, _, sent, recv, err = o.info
+        k = msg_key(sent)
+        if k is not None:
+            pending.setdefault((o.party, k), deque()).append(o.n)
+            deliveries[o.n] = []
+        tam = o.tamper is not None
+        k = msg_key(o.tamper["args"][0] if tam else recv)
+        q = pending.get(("B" if o.party == "A" else "A", k))
+        if k is None or not q:
+            continue
+        deliveries[q[0]].append((o.n, tam))
+        if not (tam and err):
+            q.popleft()
+    return deliveries
+
+
+def compact_rows(rows, rejects, deliveries):
     """The rows of the `--compact` view, in order."""
     keep = set()
     for o in rows:
@@ -240,29 +271,13 @@ def compact_rows(rows, rejects, recv_at):
             keep.add(o.n)
     # The sends whose message a kept receive got.
     for o in rows:
-        k = msg_key(o.info[4])
-        if k is None:
-            continue
-        if any(n in keep for n in recv_at.get((o.party, k), []) if n > o.n):
+        if any(n in keep for n, _ in deliveries.get(o.n, [])):
             keep.add(o.n)
     return [o for o in rows if o.n in keep]
 
 
 def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
-    # Match each send to its receive (tampered messages via the tamper events).
-    # recv_at maps (sender, message key) to the receiving operations, in increasing order.
-    recv_at, tampered = {}, {}
-    for o in ops:
-        if o.info is None:
-            continue
-        if o.tamper:
-            orig, new = o.tamper["args"]
-            tampered[msg_key(new)] = msg_key(orig)
-        k = msg_key(o.info[5])
-        if k is not None:
-            src = "B" if o.party == "A" else "A"
-            k = tampered.get(k, k)
-            recv_at.setdefault((src, k), []).append(o.n)
+    deliveries = match_messages(ops)
 
     def visible(o):
         if o.step is None or not lo <= o.n <= hi:
@@ -280,7 +295,7 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
 
     rows = [o for o in ops if visible(o)]
     if compact:
-        rows = compact_rows(rows, rejects, recv_at)
+        rows = compact_rows(rows, rejects, deliveries)
     rows = rows[:max_rows]
     row_of = {o.n: i for i, o in enumerate(rows)}
 
@@ -301,7 +316,6 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
     def y_of(i):
         return top + rh * i + rh / 2
 
-    tampered_orig = set(tampered.values())
     notes = []
     arrows = []
     for i, o in enumerate(rows):
@@ -336,20 +350,17 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
             out.append(svg_text(kx, y + 3.5, f"K{kep}", 8, "middle", "#3e2b00", "bold"))
         if is_rej:
             notes.append((i, o.party, rejects[o.party][1]))
-        k = msg_key(sent)
-        if k is not None:
+        if o.n in deliveries:
             dst = "B" if o.party == "A" else "A"
-            rn = next((n for n in recv_at.get((o.party, k), []) if n > o.n), None)
-            arrows.append((i, o.party, dst, rn, sent, k))
-    for i, src, dst, rn, m, k in arrows:
+            arrows.append((i, o.party, dst, deliveries[o.n], sent))
+    for i, src, dst, dels, m in arrows:
         x0, x1 = xs[src], xs[dst]
         d = 1 if x1 > x0 else -1
         x0 += d * 95
         x1 -= d * 95
         y0 = y_of(i)
         label = msg_text(m)
-        tam = k in tampered_orig
-        if rn is None:
+        if not dels:
             xm = x0 + (x1 - x0) * 0.35
             out.append(f"<line x1='{x0}' y1='{y0}' x2='{xm:.1f}' y2='{y0 + 6}' "
                        f"stroke='{GREY}' stroke-width='1'/>"
@@ -358,19 +369,26 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
             out.append(svg_text(x0 + d * 6, y0 - 3, f"{label} (lost)", 10,
                                 "start" if d > 0 else "end", GREY))
             continue
-        if rn not in row_of:
-            continue
-        y1 = y_of(row_of[rn])
-        col = RED if tam else "#455a64"
-        out.append(f"<line x1='{x0}' y1='{y0}' x2='{x1}' y2='{y1:.1f}' stroke='{col}' "
-                   f"stroke-width='{1.6 if tam else 1}' marker-end='url(#ah{'r' if tam else ''})'/>")
-        out.append(svg_text(x0 + d * 6, y0 - 3, label, 10, "start" if d > 0 else "end", col))
-        if tam:
-            xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
-            out.append(f"<path d='M{xm - 6:.1f},{ym - 9:.1f} l9,7 l-5,1 l7,8 l-11,-6 l5,-1 z' "
-                       f"fill='{RED}'/>")
-            out.append(svg_text(xm + 10, ym + 16, "tampered in transit", 11, fill=RED,
-                                weight="bold"))
+        labelled = False  # a send delivered twice (a rejected tampered copy, then the
+        # original) gets two arrows and one label
+        for rn, tam in dels:
+            if rn not in row_of:
+                continue
+            y1 = y_of(row_of[rn])
+            col = RED if tam else "#455a64"
+            out.append(f"<line x1='{x0}' y1='{y0}' x2='{x1}' y2='{y1:.1f}' stroke='{col}' "
+                       f"stroke-width='{1.6 if tam else 1}' "
+                       f"marker-end='url(#ah{'r' if tam else ''})'/>")
+            if not labelled:
+                out.append(svg_text(x0 + d * 6, y0 - 3, label, 10, "start" if d > 0 else "end",
+                                    col))
+                labelled = True
+            if tam:
+                xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
+                out.append(f"<path d='M{xm - 6:.1f},{ym - 9:.1f} l9,7 l-5,1 l7,8 l-11,-6 l5,-1 "
+                           f"z' fill='{RED}'/>")
+                out.append(svg_text(xm + 10, ym + 16, "tampered in transit", 11, fill=RED,
+                                    weight="bold"))
     for i, party, diag in notes:
         y = y_of(i) + 16
         lines = wrap(diag, 52)

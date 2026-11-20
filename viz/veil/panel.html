@@ -1,0 +1,67 @@
+<!doctype html>
+<!--
+  Shows a result of a compiled Veil model checker in the panel of the Veil VS Code extension,
+  outside VS Code. Put `webview.js` (from `editors/vscode`, `node esbuild.mjs`) next to this
+  file, serve the folder, and open `panel.html?r=<result>.json`.
+-->
+<html>
+<head>
+<meta charset="utf-8">
+<title>Veil run</title>
+<style>
+  :root {
+    --vscode-font-family: system-ui, sans-serif; --vscode-font-size: 14px;
+    --vscode-editor-font-family: "DejaVu Sans Mono", monospace;
+    --vscode-foreground: #1f1f1f; --vscode-editor-foreground: #1f1f1f;
+    --vscode-editor-background: #ffffff; --vscode-editorWidget-background: #f3f3f3;
+    --vscode-editorGroupHeader-tabsBackground: #f3f3f3; --vscode-panel-border: #d4d4d4;
+    --vscode-descriptionForeground: #6f6f6f; --vscode-textLink-foreground: #005fb8;
+    --vscode-focusBorder: #005fb8; --vscode-list-hoverBackground: #f0f0f0;
+    --vscode-toolbar-hoverBackground: #e5e5e5;
+    --vscode-button-background: #005fb8; --vscode-button-foreground: #ffffff;
+    --vscode-button-hoverBackground: #0258a8; --vscode-button-secondaryBackground: #e5e5e5;
+    --vscode-button-secondaryForeground: #1f1f1f; --vscode-button-secondaryHoverBackground: #cccccc;
+    --vscode-diffEditor-insertedLineBackground: #e6ffec; --vscode-diffEditor-insertedTextBackground: #9be9a8;
+    --vscode-diffEditor-removedLineBackground: #ffebe9; --vscode-diffEditor-removedTextBackground: #ff818266;
+    --vscode-editor-findMatchHighlightBackground: #ffe58a; --vscode-editor-findMatchHighlightBorder: #c9a400;
+    --vscode-editor-selectionBackground: #add6ff; --vscode-editor-selectionHighlightBorder: #005fb8;
+    --vscode-editorHoverWidget-background: #f8f8f8; --vscode-editorHoverWidget-border: #c8c8c8;
+    --vscode-editorHoverWidget-foreground: #1f1f1f; --vscode-editorWarning-foreground: #bf8803;
+    --vscode-errorForeground: #c72e0f; --vscode-testing-iconPassed: #388a34;
+    --vscode-charts-blue: #1a85ff; --vscode-notificationsInfoIcon-foreground: #1a85ff;
+    --vscode-activityBarBadge-background: #005fb8; --vscode-activityBarBadge-foreground: #ffffff;
+    --vscode-inputValidation-errorBackground: #f2dede; --vscode-inputValidation-errorBorder: #be1100;
+    --vscode-inputValidation-errorForeground: #1f1f1f; --vscode-inputValidation-infoBackground: #d6ecf2;
+    --vscode-inputValidation-infoBorder: #1a85ff; --vscode-inputValidation-infoForeground: #1f1f1f;
+    --vscode-inputValidation-warningBackground: #f6f5d2; --vscode-inputValidation-warningBorder: #b89500;
+    --vscode-inputValidation-warningForeground: #1f1f1f;
+  }
+  body { background: var(--vscode-editor-background); color: var(--vscode-foreground);
+         font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // The VS Code API that the panel expects: answer its `ready` with the run.
+  const params = new URLSearchParams(location.search);
+  const resultUrl = params.get('r') || 'result.json';
+  window.acquireVsCodeApi = () => ({
+    postMessage: async (m) => {
+      if (m.type !== 'ready') return;
+      const result = await (await fetch(resultUrl)).json();
+      const now = Date.now();
+      const run = {
+        module: params.get('module') || 'SpqrBraid', source: params.get('source') || 'SpqrBraid.lean',
+        binary: '', args: [], status: 'finished', startedAt: now - 1000, endedAt: now,
+        actionLabels: result.start ? result.start.actionLabels : undefined,
+        history: [], result,
+      };
+      window.postMessage({ type: 'state', state: { run, origin: 'file', fileName: resultUrl,
+                                                     canRunAgain: false } }, '*');
+    },
+  });
+</script>
+<script src="webview.js"></script>
+</body>
+</html>

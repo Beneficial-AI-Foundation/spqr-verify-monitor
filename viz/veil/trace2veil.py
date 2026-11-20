@@ -197,8 +197,11 @@ def query(sts, name: str) -> str:
 
 def start_states(sts, starts) -> dict:
     """Map each `i` in `starts` to the SpqrBraid state before step `i`, read from the log:
-    each party's state and epoch after its last step, and every message sent so far. One pass
-    over the steps."""
+    each party's state and epoch after its last step, and the messages sent so far in an epoch
+    at least the smaller of the two epochs. One pass over the steps.
+
+    A receive checks `sent` only at the receiver's epoch, and epochs do not decrease, so the
+    older messages cannot change the result of a query."""
     lab = {"A": "keysUnsampled", "B": "noHeaderReceived"}
     ep = {"A": 1, "B": 1}
     sent = set()
@@ -206,6 +209,8 @@ def start_states(sts, starts) -> dict:
     out = {}
     for i in range(max(want, default=-1) + 1):
         if i in want:
+            low = min(ep.values())
+            sent = {m for m in sent if m[2] >= low}
             out[i] = (dict(lab), dict(ep), sorted(sent))
         if i < len(sts):
             s = sts[i]
@@ -298,6 +303,8 @@ def main():
         print(query(sts, "replay"))
         return
 
+    # Absolute, because Lean runs with the Veil checkout as its working directory.
+    a.keep = os.path.abspath(a.keep)
     os.makedirs(a.keep, exist_ok=True)
     if a.mode == "check":
         tag = f"check_{len(sts)}"

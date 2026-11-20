@@ -31,6 +31,11 @@ toolchain=${SPQR_RUST_TOOLCHAIN:-+1.99.1}
 memcap=()
 if [ "${SPQR_MONITOR_MEMCAP:-1}" != 0 ] && command -v systemd-run > /dev/null; then
   memcap=(systemd-run --user --scope --quiet -p MemoryMax=16G -p MemorySwapMax=0)
+  # Stop before the tests if the user service manager cannot run a capped scope.
+  "${memcap[@]}" true || {
+    echo "systemd-run cannot run a capped scope here; set SPQR_MONITOR_MEMCAP=0" >&2
+    exit 1
+  }
 fi
 for name in "$@"; do
   dir=$out/$name

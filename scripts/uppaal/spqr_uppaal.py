@@ -572,6 +572,8 @@ def run_verifyta(model, query_text, extra=()):
         f.write(query_text + "\n")
     r = subprocess.run([VERIFYTA, "-q", "-s", *extra, model, qpath], capture_output=True,
                        text=True)
+    if r.returncode != 0:
+        raise SystemExit(f"verifyta exited with {r.returncode}:\n{r.stdout}{r.stderr}")
     return r.stdout + r.stderr
 
 
@@ -627,9 +629,9 @@ def main():
     k = int(mm.group(1)) if mm else None
     print(f"{name}: {len(steps)} steps, E<> Obs.done "
           f"{'satisfied' if done_sat else 'NOT satisfied'}, max matched k = {k}")
-    if k is None:
+    if k is None or (not done_sat and k >= len(steps)):
         print(out)
-        return
+        raise SystemExit(f"{name}: no result in the verifyta output")
     if k < len(steps):
         print(f"  rejected step {k}: {steps[k].describe()}")
     # witness of the longest matched prefix

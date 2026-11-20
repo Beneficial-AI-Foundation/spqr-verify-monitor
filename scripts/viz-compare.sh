@@ -60,13 +60,19 @@ lean_verdict() {
     }' "$report"
 }
 
+# fail MESSAGE: stop the whole script. The helpers run in command substitutions, where
+# `set -e` does not stop the script.
+fail() { echo "viz-compare: $*" >&2; kill -TERM $$; exit 1; }
+
 # uppaal_verdict MUTANT TRACE PARTY MAX_OPS: "OP LINE" or "accepted".
 uppaal_verdict() {
-  local out
+  local out v
   out=$(python3 -I "$UPPAAL" check "$OUT_DIR/$1/traces/$2" --party "$3" --max-ops "$4" \
-          --workdir "$WORK/uppaal/$1")
+          --workdir "$WORK/uppaal/$1") || fail "UPPAAL failed on $1 $2 party $3"
   if grep -q 'E<> Obs.done satisfied' <<<"$out"; then echo accepted; return; fi
-  sed -n 's/^  rejected step [0-9]*: op \([0-9]*\) (line \([0-9]*\)).*/\1 \2/p' <<<"$out"
+  v=$(sed -n 's/^  rejected step [0-9]*: op \([0-9]*\) (line \([0-9]*\)).*/\1 \2/p' <<<"$out")
+  [ -n "$v" ] || fail "no UPPAAL verdict for $1 $2 party $3:"$'\n'"$out"
+  echo "$v"
 }
 
 # veil_steps TRACE OP: the number of kept Veil steps up to 3 steps past the first step at or
@@ -85,11 +91,13 @@ EOF
 
 # veil_verdict MUTANT TRACE STEPS: "OP LINE PARTY" or "accepted".
 veil_verdict() {
-  local out
+  local out v
   out=$(python3 -I "$VEIL" search "$OUT_DIR/$1/traces/$2" --veil "$VEIL_DIR" --steps "$3" \
-          --jobs 2 --keep "$WORK/veil/$1" 2>/dev/null)
+          --jobs 2 --keep "$WORK/veil/$1") || fail "Veil failed on $1 $2"
   if grep -q '^all .* steps satisfiable' <<<"$out"; then echo accepted; return; fi
-  sed -n 's/^first step with no model: step [0-9]*, line \([0-9]*\), party \([AB]\), op \([0-9]*\),.*/\3 \1 \2/p' <<<"$out"
+  v=$(sed -n 's/^first step with no model: step [0-9]*, line \([0-9]*\), party \([AB]\), op \([0-9]*\),.*/\3 \1 \2/p' <<<"$out")
+  [ -n "$v" ] || fail "no Veil verdict for $1 $2:"$'\n'"$out"
+  echo "$v"
 }
 
 fmt() {  # "OP LINE" -> "op OP (line LINE)"

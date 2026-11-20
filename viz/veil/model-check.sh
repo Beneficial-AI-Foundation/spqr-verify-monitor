@@ -23,8 +23,12 @@ set_option veil.modelChecker.buildOnly true in
 open(sys.argv[2], "w").write(m)
 EOF
 # The build takes about 1 minute and 2 GB. The cap keeps a runaway build from taking the machine.
-log=$(cd "$veil" && systemd-run --user --scope -q -p MemoryMax=12G -p MemorySwapMax=0 \
-  lake lean "$work/mc.lean" 2>&1 || true)
+if ! log=$(cd "$veil" && systemd-run --user --scope -q -p MemoryMax=12G -p MemorySwapMax=0 \
+  lake lean "$work/mc.lean" 2>&1); then
+  printf '%s\n' "$log" >&2
+  echo "model-check: the build failed" >&2
+  exit 1
+fi
 binary=$(printf '%s\n' "$log" | sed -n 's/^VEIL_BUILD_ONLY .*"binary":"\([^"]*\)".*/\1/p')
 if [ -z "$binary" ]; then printf '%s\n' "$log" >&2; exit 1; fi
 # The checker stops when its stdin closes, so keep stdin open while it runs. A process

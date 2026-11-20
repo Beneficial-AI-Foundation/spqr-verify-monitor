@@ -33,14 +33,16 @@ mod test {
     #[cfg(feature = "monitor")]
     #[test]
     fn tamper_chaos() -> Result<(), Error> {
-        let mut rng = OsRng.unwrap_err();
+        // A fixed seed, so that a rerun gives the same trace.
+        let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(1);
         orchestrator::tamper::tamper_chaos(10000, 0.3, &mut rng)
     }
 
     #[cfg(feature = "monitor")]
     #[test]
     fn tamper_early() -> Result<(), Error> {
-        let mut rng = OsRng.unwrap_err();
+        // A fixed seed, so that a rerun gives the same trace.
+        let mut rng = <rand::rngs::StdRng as rand::SeedableRng>::seed_from_u64(2);
         orchestrator::tamper::tamper_early(6, 300, &mut rng)
     }
 

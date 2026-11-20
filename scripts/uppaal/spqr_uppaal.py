@@ -363,7 +363,7 @@ def document(templates, system, queries):
 def free_model():
     decl = declarations(False, True)
     system = "Alice = Party(A);\nBob = Party(B);\nsystem Alice, Bob, Net;\n"
-    queries = [("E<> Alice.Ct2Sampled", "Alice finishes epoch 1 as sender of ct2"),
+    queries = [("E<> Alice.Ct2Sampled", "Alice reaches Ct2Sampled"),
                ("E<> ep[A] == 3 && ep[B] == 3", "both parties reach epoch 3"),
                ("A[] (ep[A] <= ep[B] + 1 && ep[B] <= ep[A] + 1)",
                 "the epochs of the parties differ by at most one")]

@@ -114,7 +114,9 @@ runs the monitor on the new traces:
 scripts/monitor-mutants.sh /tmp/spqr-monitor-mutants
 ```
 
-It takes about 6 minutes per patch. `/tmp/spqr-monitor-mutants/summary.txt` has one line per
+It takes about 6 minutes per patch. The script runs the monitor under
+`systemd-run --user --scope -p MemoryMax=16G` when `systemd-run` exists, and stops before the
+tests if that command fails. To run the monitor without the cap, set `SPQR_MONITOR_MEMCAP=0`. `/tmp/spqr-monitor-mutants/summary.txt` has one line per
 patch, and `/tmp/spqr-monitor-mutants/<name>/report.txt` has the full monitor report.
 
 Result on the branch (2026-11-20). "Standard" is the eleven standard traces (22 parties).
@@ -173,24 +175,32 @@ VERIFYTA=/opt/uppaal/lib/app/bin/verifyta VEIL_DIR=~/veil scripts/viz-compare.sh
 
 UPPAAL takes a few seconds. Veil takes about 25 minutes.
 
-Result on the branch (2026-11-20). The operation numbers of the `chaos` cases come from the run
-of section 5 and change from run to run.
+Both replays check a prefix of the session, not the whole session. UPPAAL replays one party up
+to 50 operations past the Lean rejection; a party that Lean accepts gets the bound of the other
+party, and the honest trace gets the largest bound (operations 1 to 1183 of about 84,600). Veil
+replays both parties up to 3 steps past the first Lean rejection; the honest trace gets the
+largest bound (144 of 25,240 steps). A full session is out of reach: UPPAAL did not finish one
+honest party in 6 minutes, and Veil needs about 35 seconds per query of 12 steps.
 
-| Mutant, trace | Party | Lean monitor | UPPAAL | Veil |
-|---------------|-------|--------------|--------|------|
+Result on the branch (2026-11-20). The operation numbers of the `chaos` cases come from the run
+of section 5 and change from run to run. "Prefix accepted" means that the checked prefix is a
+run of the model.
+
+| Mutant, trace | Party | Lean monitor (whole session) | UPPAAL (prefix) | Veil (prefix) |
+|---------------|-------|------------------------------|-----------------|---------------|
 | M1, `chaos` | A | op 572 | op 572 | op 572 |
 | M1, `chaos` | B | op 1133 | op 1133 | not reached |
 | R2, `chaos` | A | op 484 | op 484 | not reached |
 | R2, `chaos` | B | op 441 | op 441 | op 441 |
 | R3, `chaos` | A | op 316 | op 316 | not reached |
 | R3, `chaos` | B | op 275 | op 275 | op 275 |
-| R4, `tamper_chaos` | A | op 546 | op 546 | accepted |
-| R4, `tamper_chaos` | B | accepted | accepted | accepted |
-| honest, `chaos` | A, B | accepted | accepted | accepted |
+| R4, `tamper_chaos` | A | op 546 | op 546 | prefix accepted (141 steps) |
+| R4, `tamper_chaos` | B | accepted | prefix accepted (596 ops) | prefix accepted (141 steps) |
+| honest, `chaos` | A, B | accepted | prefix accepted (1183 ops) | prefix accepted (144 steps) |
 
-UPPAAL replays one party at a time and rejects at the same operation as the Lean monitor in
-every case. Veil replays both parties together and stops at the first rejection in trace order,
-so it reports one party per case ("not reached" for the other). Veil accepts R4: its model sees
+Where the Lean monitor rejects, UPPAAL rejects at the same operation. Veil replays both parties
+together and stops at the first rejection in trace order, so it reports one party per case
+("not reached" for the other). Veil accepts the R4 prefix: its model sees
 whether a MAC is absent, good or bad, but it does not compare the received MAC with the
 computed one. UPPAAL finds R4 because its translator compares the two MACs in Python and gives
 the model a bad token. Neither model checks the cryptographic values that the Lean monitor

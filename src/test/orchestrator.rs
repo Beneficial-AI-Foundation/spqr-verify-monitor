@@ -15,10 +15,10 @@ use crate::Epoch;
 use crate::Error;
 
 use super::basic_messaging_behavior::BasicMessagingBehavior;
+use super::messaging_behavior::MessagingBehavior;
 
 #[cfg(feature = "monitor")]
 pub mod tamper;
-use super::messaging_behavior::MessagingBehavior;
 
 pub struct OrchestratorBase<K>
 where
@@ -310,6 +310,7 @@ struct EpochVulnsetInfo {
     b_end: usize,
 }
 
+/// Ends the monitor session that `OrchestratorBase::new` started.
 #[cfg(feature = "monitor")]
 impl<K> Drop for OrchestratorBase<K>
 where
@@ -980,6 +981,23 @@ where
     <CKA as MessagingScka>::CkaOutput: PartialEq + Debug,
     R: CryptoRng,
 {
+    chaos_with::<CKA, R>(num_ticks, rng, |orchestrator, is_alex, i, _rng| {
+        orchestrator.receive_at(is_alex, i).map(|_received| ())
+    })
+}
+
+/// The `chaos` driver, where `receive_at(orchestrator, is_alex, i, rng)` receives the `i`-th
+/// message of the incoming queue of Alex (`is_alex`) or Blake.
+pub(crate) fn chaos_with<CKA, R>(
+    num_ticks: usize,
+    rng: &mut R,
+    mut receive_at: impl FnMut(&mut OrchestratorBase<CKA>, bool, usize, &mut R) -> Result<(), Error>,
+) -> Result<(), Error>
+where
+    CKA: MessagingScka + MessagingCkaVulnerability,
+    <CKA as MessagingScka>::CkaOutput: PartialEq + Debug,
+    R: CryptoRng,
+{
     let ooo_prob = 0.7;
     let send_limit = 10;
     let drop_message_prob = 0.1;
@@ -995,8 +1013,8 @@ where
         if rng.random_bool(ooo_prob) {
             let qlen = orchestrator.qlen(use_alex);
             if qlen > 0 {
-                let _received =
-                    orchestrator.receive_at(use_alex, rng.next_u32() as usize % qlen)?;
+                let at = rng.next_u32() as usize % qlen;
+                receive_at(&mut orchestrator, use_alex, at, rng)?;
             }
         }
         let num_to_send = rng.next_u32() % send_limit;
@@ -1011,8 +1029,8 @@ where
         loop {
             let qlen = orchestrator.qlen(use_alex);
             if qlen > 20 {
-                let _received =
-                    orchestrator.receive_at(use_alex, rng.next_u32() as usize % qlen)?;
+                let at = rng.next_u32() as usize % qlen;
+                receive_at(&mut orchestrator, use_alex, at, rng)?;
             } else {
                 break;
             }

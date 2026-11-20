@@ -4,21 +4,22 @@
 //! Test drivers that tamper with `Hdr` and `Ct2` chunks in transit, for the runtime monitor
 //! (feature `monitor`).
 //!
-//! Honest runs never deliver a bad MAC, so a monitor of honest traces cannot see a MAC check
-//! whose result the code ignores. These drivers deliver tampered chunks and log each one with a
-//! `tamper` event (`crate::monitor::tamper`). A `recv` that fails leaves the party in its old
-//! state (`GenericMessagingScka::messaging_scka_recv` keeps the old state on an error), and the
-//! run goes on.
+//! In honest runs every MAC check passes, so their traces cannot show whether the code acts on
+//! a failed MAC check. These drivers deliver tampered chunks and log each one with a `tamper`
+//! event (`crate::monitor::tamper`). A `recv` that fails leaves the party in its old state
+//! (`GenericMessagingScka::messaging_scka_recv` keeps the old state on an error), and the run
+//! goes on.
 //!
-//! - `tamper_chaos` tampers with chunks that complete a decoder, so that the honest code fails
-//!   at the MAC check of that `recv`, and then delivers the original chunk.
-//! - `tamper_early` tampers with a chunk that does not complete the decoder. The honest code
-//!   accepts it and keeps it in the decoder, and every later decode of that epoch fails at the
-//!   MAC check: the party stays in that epoch for the rest of the session.
+//! - `tamper_chaos` tampers with chunks that complete a decoder, so that the `recv` that
+//!   receives the tampered chunk runs the MAC check on the tampered message.
+//! - `tamper_early` tampers with a chunk that does not complete the decoder. The code accepts
+//!   it and keeps it in the decoder, so the later `recv` that completes the decoder of that
+//!   epoch fails the MAC check.
 //!
-//! Whether a chunk completes the decoder comes from a dry run on a clone of the receiver's
-//! state with the honest chunk and no events written. The dry run does not depend on the MAC
-//! check of a tampered chunk.
+//! Whether a chunk completes the decoder is decided by a dry run with the original chunk on a
+//! clone of the receiver's state, with no events written.
+
+use std::collections::VecDeque;
 
 use rand::prelude::*;
 use rand::rngs::OsRng;
@@ -56,7 +57,7 @@ enum Kind {
     Ct2,
 }
 
-/// The kind of a `Hdr` or `Ct2` message.
+/// The kind of `m` if it is a `Hdr` or `Ct2` message.
 fn kind(m: &Message) -> Option<Kind> {
     match &m.payload {
         MessagePayload::Hdr(_) => Some(Kind::Hdr),
@@ -77,9 +78,9 @@ fn tampered<R: CryptoRng>(m: &Message, rng: &mut R) -> Message {
     t
 }
 
-/// Whether `state` adds the chunk of `m` to its decoder: a `Hdr` chunk in `NoHeaderReceived`
-/// or a `Ct2` chunk in `EkSentCt1Received`, of the state's epoch. Other states that accept these
-/// chunks start a new decoder or ignore them.
+/// Whether `m` is a `Hdr` chunk and `state` is `NoHeaderReceived`, or `m` is a `Ct2` chunk and
+/// `state` is `EkSentCt1Received`, with `state` in the epoch of `m`. In these states `recv` adds
+/// the chunk to the state's decoder.
 fn decodes(state: &States, m: &Message) -> bool {
     matches!(
         (crate::monitor::state_info(state), kind(m)),
@@ -115,39 +116,40 @@ impl OrchestratorBase<Cka> {
         }
     }
 
-    /// Receive `msg`, which is not taken from the queue, and record the key it outputs.
-    fn deliver(&mut self, is_alex: bool, msg: &Message) -> Result<(), Error> {
+    fn incoming(&self, is_alex: bool) -> &VecDeque<Message> {
+        if is_alex {
+            &self.b2a_msg_queue
+        } else {
+            &self.a2b_msg_queue
+        }
+    }
+
+    /// Logs a `tamper` event for the tampered copy `t` of `orig` and receives `t`, which is not
+    /// taken from the queue. Records the key that the `recv` outputs. Returns whether the code
+    /// accepted `t`.
+    fn receive_tampered(&mut self, is_alex: bool, orig: &Message, t: &Message) -> bool {
         crate::monitor::set_party(is_alex);
-        let emitted_ep = {
-            let (agent, _iq, _oq, key_history) = self.data_for_agent(is_alex);
-            let mut rng = OsRng;
-            let out = agent.messaging_scka_recv(msg, &mut rng)?;
-            out.map(|(_ep, key)| {
-                key_history.push(key);
-                agent.last_emitted_epoch()
-            })
+        crate::monitor::tamper(orig, t);
+        let (agent, _iq, _oq, key_history) = self.data_for_agent(is_alex);
+        let Ok(out) = agent.messaging_scka_recv(t, &mut OsRng) else {
+            return false;
         };
-        if let Some(ep) = emitted_ep {
+        if let Some((_ep, key)) = out {
+            key_history.push(key);
+            let ep = agent.last_emitted_epoch();
             if is_alex {
                 self.last_emitted_epoch_a = ep;
             } else {
                 self.last_emitted_epoch_b = ep;
             }
         }
-        Ok(())
+        true
     }
 
-    /// Log a tampered copy `t` of `orig` and deliver it. Return whether the code accepted it.
-    fn deliver_tampered(&mut self, is_alex: bool, orig: &Message, t: &Message) -> bool {
-        crate::monitor::set_party(is_alex);
-        crate::monitor::tamper(orig, t);
-        self.deliver(is_alex, t).is_ok()
-    }
-
-    /// Receive the `i`-th message of the queue. With probability `prob`, when it is a `Hdr` or
-    /// `Ct2` chunk that completes the decoder of the state (`decodes` and the dry run changes
-    /// the state), first deliver a tampered copy. If the code
-    /// rejects the copy, deliver the original; if it accepts the copy, drop the original.
+    /// Receives the `i`-th message of the queue. With probability `prob`, when it is a `Hdr` or
+    /// `Ct2` chunk that completes the decoder of the receiver's state (`decodes` holds and the
+    /// dry run changes the state), first receives a tampered copy. If the code rejects the copy,
+    /// receives the original; if it accepts the copy, drops the original.
     fn receive_at_tampering<R: CryptoRng>(
         &mut self,
         is_alex: bool,
@@ -156,17 +158,12 @@ impl OrchestratorBase<Cka> {
         stats: &mut Stats,
         rng: &mut R,
     ) -> Result<(), Error> {
-        let incoming = if is_alex {
-            &self.b2a_msg_queue
-        } else {
-            &self.a2b_msg_queue
-        };
-        let msg = &incoming[i];
+        let msg = &self.incoming(is_alex)[i];
         let state = self.agent(is_alex).scka();
         if decodes(state, msg) && rng.random_bool(prob) && dry_run(state, msg) == Some(true) {
             let orig = copy_msg(msg);
             let t = tampered(&orig, rng);
-            if self.deliver_tampered(is_alex, &orig, &t) {
+            if self.receive_tampered(is_alex, &orig, &t) {
                 stats.accepted += 1;
                 self.drop_message_at(is_alex, i);
                 return Ok(());
@@ -178,53 +175,23 @@ impl OrchestratorBase<Cka> {
 }
 
 /// The `chaos` driver, where each delivery of a `Hdr` or `Ct2` chunk that completes the
-/// decoder is tampered with probability `prob`.
+/// decoder is preceded, with probability `prob`, by a tampered copy. Asserts that the code
+/// rejects at least one tampered copy.
 pub fn tamper_chaos<R: CryptoRng>(num_ticks: usize, prob: f64, rng: &mut R) -> Result<(), Error> {
-    let ooo_prob = 0.7;
-    let send_limit = 10;
-    let drop_message_prob = 0.1;
     let mut stats = Stats::default();
-    let mut orchestrator = OrchestratorBase::<Cka>::new(rng)?;
-    for i in 0..num_ticks {
-        let use_alex = if i % 100 < 50 {
-            rng.random_bool(0.25)
-        } else {
-            rng.random_bool(0.75)
-        };
-        if rng.random_bool(ooo_prob) {
-            let qlen = orchestrator.qlen(use_alex);
-            if qlen > 0 {
-                let at = rng.next_u32() as usize % qlen;
-                orchestrator.receive_at_tampering(use_alex, at, prob, &mut stats, rng)?;
-            }
-        }
-        let num_to_send = rng.next_u32() % send_limit;
-        for _ in 0..num_to_send {
-            orchestrator.send(use_alex, rng)?;
-            if rng.random_bool(drop_message_prob) {
-                orchestrator.drop_message_at(use_alex, 0);
-            }
-        }
-        loop {
-            let qlen = orchestrator.qlen(use_alex);
-            if qlen <= 20 {
-                break;
-            }
-            let at = rng.next_u32() as usize % qlen;
-            orchestrator.receive_at_tampering(use_alex, at, prob, &mut stats, rng)?;
-        }
-        orchestrator.key_history_is_consistent();
-    }
-    orchestrator.print_key_history_lengths();
+    super::chaos_with::<Cka, R>(num_ticks, rng, |orchestrator, is_alex, i, rng| {
+        orchestrator.receive_at_tampering(is_alex, i, prob, &mut stats, rng)
+    })?;
     println!("tampered chunks: {stats:?}");
     assert!(stats.rejected > 0, "no tampered chunk was rejected");
     Ok(())
 }
 
-/// Sessions of `num_ticks` ticks where one `Hdr` or `Ct2` chunk that does not complete the
-/// decoder is replaced by a tampered copy. In each tick one random party sends a message and the
-/// other party receives its whole queue in order. The party that received the tampered chunk
-/// (the victim) must fail at least once later, and the keys of both parties must agree.
+/// Runs `sessions` sessions of `num_ticks` ticks. In each tick a random party sends a message
+/// and the other party receives its whole queue in order. In each session the first `Hdr`
+/// chunk (even sessions) or `Ct2` chunk (odd sessions) that does not complete the decoder is
+/// replaced by a tampered copy. Asserts that the code accepts the copy, that the party that
+/// received it (the victim) fails at least once later, and that the keys of both parties agree.
 pub fn tamper_early<R: CryptoRng>(
     sessions: usize,
     num_ticks: usize,
@@ -239,29 +206,25 @@ pub fn tamper_early<R: CryptoRng>(
             let sender = rng.random_bool(0.5);
             orchestrator.send(sender, rng)?;
             let is_alex = !sender;
-            while orchestrator.qlen(is_alex) > 0 {
-                let incoming = if is_alex {
-                    &mut orchestrator.b2a_msg_queue
-                } else {
-                    &mut orchestrator.a2b_msg_queue
-                };
-                let msg = incoming.pop_front().expect("queue is not empty");
+            while let Some(msg) = orchestrator.incoming(is_alex).front() {
                 let state = orchestrator.agent(is_alex).scka();
                 if victim.is_none()
-                    && kind(&msg) == Some(target)
-                    && decodes(state, &msg)
-                    && dry_run(state, &msg) == Some(false)
+                    && kind(msg) == Some(target)
+                    && decodes(state, msg)
+                    && dry_run(state, msg) == Some(false)
                 {
-                    let t = tampered(&msg, rng);
+                    let orig = copy_msg(msg);
+                    let t = tampered(&orig, rng);
+                    orchestrator.drop_message_at(is_alex, 0);
                     assert!(
-                        orchestrator.deliver_tampered(is_alex, &msg, &t),
+                        orchestrator.receive_tampered(is_alex, &orig, &t),
                         "a tampered chunk that does not complete the decoder was rejected"
                     );
                     victim = Some(is_alex);
                     continue;
                 }
-                match orchestrator.deliver(is_alex, &msg) {
-                    Ok(()) => {}
+                match orchestrator.receive_in_order(is_alex) {
+                    Ok(_) => {}
                     Err(_) if victim == Some(is_alex) => victim_errors += 1,
                     Err(e) => return Err(e),
                 }

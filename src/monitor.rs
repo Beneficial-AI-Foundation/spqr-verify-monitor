@@ -5,18 +5,24 @@
 //!
 //! Each event is one JSON line `{"s":..,"p":..,"op":..,"f":..,"args":..,"ret":..}`: the session
 //! number, the party (`A` or `B`), the operation number, the function name, its arguments and
-//! its result, with bytes as lowercase hex. Operation 0 is a party's initialization; the test
+//! its result, with bytes as lowercase hex strings. The operation number counts per session and
+//! is shared by both parties. Operation 0 is the initialization of both parties; the test
 //! harness starts operation `n + 1` before each `States::send` or `States::recv` call
-//! (`begin_op`), and the call's step event ends it. A test that tampers with a message in
-//! transit writes a `tamper` event in the operation of the `recv` that receives the tampered
-//! message. The log is written only when the environment variable `SPQR_MONITOR_DIR` names a
-//! directory and the current thread has a party set (`set_party`). The file is
-//! `$SPQR_MONITOR_DIR/<thread name>.jsonl`. The Lean program `spqr-monitor` checks the log
-//! against `BraidModel`.
+//! (`begin_op`), and the `States::send` or `States::recv` event is the last event of that
+//! operation. A test that tampers with a message in transit writes a `tamper` event in the
+//! operation of the `recv` that receives the tampered message.
+//!
+//! An event is written only when the environment variable `SPQR_MONITOR_DIR` is set and the
+//! current thread has a party set (`set_party`). Each thread writes to
+//! `$SPQR_MONITOR_DIR/<thread name>.jsonl`, with `::` in the thread name replaced by `.`; the
+//! directory is created if it does not exist. The functions panic if the log cannot be written,
+//! so that an incomplete log is not mistaken for a complete one. The Lean program
+//! `spqr-monitor` checks the log against `BraidModel`.
 
 use std::cell::RefCell;
 use std::fmt::Write as _;
-use std::io::Write as _;
+use std::fs::File;
+use std::io::{BufWriter, Write as _};
 
 use crate::encoding::polynomial::PolyDecoder;
 #[cfg(test)]
@@ -28,50 +34,64 @@ use crate::v1::chunked::states::{Message, MessagePayload, Recv, Send, States};
 #[cfg(test)]
 use crate::{EpochSecret, Error};
 
+/// Appends formatted text to a `String`. Writing to a `String` cannot fail.
+macro_rules! push {
+    ($out:expr, $($arg:tt)*) => {{
+        let _ = write!($out, $($arg)*);
+    }};
+}
+
+/// The output file of a thread's log.
+#[derive(Default)]
+enum Log {
+    /// No event has been written yet.
+    #[default]
+    Unopened,
+    /// `SPQR_MONITOR_DIR` is not set.
+    Off,
+    On(BufWriter<File>),
+}
+
+impl Log {
+    /// The output file, opened on the first call.
+    fn get(&mut self) -> Option<&mut BufWriter<File>> {
+        if let Log::Unopened = self {
+            *self = match std::env::var_os("SPQR_MONITOR_DIR") {
+                None => Log::Off,
+                Some(dir) => {
+                    let name = std::thread::current()
+                        .name()
+                        .unwrap_or("unnamed")
+                        .replace("::", ".");
+                    std::fs::create_dir_all(&dir).expect("monitor: cannot create SPQR_MONITOR_DIR");
+                    let path = std::path::Path::new(&dir).join(format!("{name}.jsonl"));
+                    let file = File::create(&path).unwrap_or_else(|e| {
+                        panic!("monitor: cannot create {}: {e}", path.display())
+                    });
+                    Log::On(BufWriter::new(file))
+                }
+            };
+        }
+        match self {
+            Log::On(out) => Some(out),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Default)]
 struct Sink {
     session: u64,
     op: u64,
     party: Option<char>,
-    out: Option<std::io::BufWriter<std::fs::File>>,
-    disabled: bool,
+    log: Log,
 }
 
 impl Sink {
     #[cfg(test)]
     fn flush(&mut self) {
-        if let Some(out) = self.out.as_mut() {
+        if let Log::On(out) = &mut self.log {
             out.flush().expect("monitor: cannot flush the event log");
-        }
-    }
-
-    fn open(&mut self) -> bool {
-        if self.out.is_some() {
-            return true;
-        }
-        if self.disabled {
-            return false;
-        }
-        let Some(dir) = std::env::var_os("SPQR_MONITOR_DIR") else {
-            self.disabled = true;
-            return false;
-        };
-        let name = std::thread::current()
-            .name()
-            .unwrap_or("unnamed")
-            .replace("::", ".");
-        std::fs::create_dir_all(&dir).expect("monitor: cannot create SPQR_MONITOR_DIR");
-        let path = std::path::Path::new(&dir).join(format!("{name}.jsonl"));
-        let file = std::fs::File::create(&path).expect("monitor: cannot create the event log");
-        self.out = Some(std::io::BufWriter::new(file));
-        true
-    }
-}
-
-impl Drop for Sink {
-    fn drop(&mut self) {
-        if let Some(out) = self.out.as_mut() {
-            let _ = out.flush();
         }
     }
 }
@@ -80,8 +100,9 @@ thread_local! {
     static SINK: RefCell<Sink> = RefCell::new(Sink::default());
 }
 
+/// Starts a new session on this thread: increments the session number, resets the operation
+/// number to 0, clears the party and flushes the log.
 #[cfg(test)]
-/// Start a new session on this thread. Later events carry the new session number.
 pub fn start_session() {
     SINK.with(|s| {
         let mut s = s.borrow_mut();
@@ -92,8 +113,8 @@ pub fn start_session() {
     });
 }
 
+/// Ends the session on this thread: clears the party and flushes the log.
 #[cfg(test)]
-/// End the session on this thread: no party is set and the log is flushed.
 pub fn end_session() {
     SINK.with(|s| {
         let mut s = s.borrow_mut();
@@ -102,19 +123,19 @@ pub fn end_session() {
     });
 }
 
-/// Start the next operation of the session: the events up to the next step event belong to it.
+/// Increments the operation number of the session.
 #[cfg(test)]
 pub fn begin_op() {
     SINK.with(|s| s.borrow_mut().op += 1);
 }
 
-/// Set the party whose calls the following events record.
+/// Sets the party of the events that follow: `A` if `is_a`, else `B`.
 #[cfg(test)]
 pub fn set_party(is_a: bool) {
     SINK.with(|s| s.borrow_mut().party = Some(if is_a { 'A' } else { 'B' }));
 }
 
-/// Run `f` with no events written: for a dry run of a call that is not part of the trace.
+/// Runs `f` with no events written.
 #[cfg(test)]
 pub fn paused<T>(f: impl FnOnce() -> T) -> T {
     let party = SINK.with(|s| s.borrow_mut().party.take());
@@ -123,61 +144,97 @@ pub fn paused<T>(f: impl FnOnce() -> T) -> T {
     r
 }
 
-fn emit(f: &str, args: &str, ret: &str) {
+fn emit(f: &str, args: impl FnOnce(&mut String), ret: impl FnOnce(&mut String)) {
     emit_at(0, f, args, ret)
 }
 
-/// Write an event in operation `op + offset`, where `op` is the current operation.
-fn emit_at(offset: u64, f: &str, args: &str, ret: &str) {
+/// Writes an event for function `f` in operation `op + offset`, where `op` is the current
+/// operation. `args` and `ret` append the JSON of the arguments and the result; they run only
+/// when the event is written.
+fn emit_at(offset: u64, f: &str, args: impl FnOnce(&mut String), ret: impl FnOnce(&mut String)) {
+    let header = SINK.with(|s| {
+        let mut s = s.borrow_mut();
+        let p = s.party?;
+        s.log.get()?;
+        Some((s.session, p, s.op + offset))
+    });
+    let Some((session, p, op)) = header else {
+        return;
+    };
+    let mut line = String::with_capacity(256);
+    push!(
+        line,
+        "{{\"s\":{session},\"p\":\"{p}\",\"op\":{op},\"f\":\"{f}\",\"args\":"
+    );
+    args(&mut line);
+    line.push_str(",\"ret\":");
+    ret(&mut line);
+    line.push_str("}\n");
     SINK.with(|s| {
         let mut s = s.borrow_mut();
-        let Some(p) = s.party else { return };
-        if !s.open() {
-            return;
-        }
-        let (session, op) = (s.session, s.op + offset);
-        let out = s.out.as_mut().expect("opened above");
-        writeln!(
-            out,
-            "{{\"s\":{session},\"p\":\"{p}\",\"op\":{op},\"f\":\"{f}\",\"args\":{args},\"ret\":{ret}}}"
-        )
-        .expect("monitor: cannot write the event log");
+        let out = s.log.get().expect("the log is open");
+        out.write_all(line.as_bytes())
+            .expect("monitor: cannot write the event log");
     });
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut s = String::with_capacity(2 * bytes.len() + 2);
-    s.push('"');
+/// Appends `bytes` as a JSON string of lowercase hex digits.
+fn hex(out: &mut String, bytes: &[u8]) {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    out.reserve(2 * bytes.len() + 2);
+    out.push('"');
     for b in bytes {
-        write!(s, "{b:02x}").expect("writing to a String");
+        out.push(char::from(DIGITS[usize::from(b >> 4)]));
+        out.push(char::from(DIGITS[usize::from(b & 0xf)]));
     }
-    s.push('"');
-    s
+    out.push('"');
 }
 
-fn list(items: &[String]) -> String {
-    format!("[{}]", items.join(","))
+/// Appends a JSON array of the hex strings of `items`.
+fn hex_list(out: &mut String, items: &[&[u8]]) {
+    out.push('[');
+    for (i, bytes) in items.iter().enumerate() {
+        if i > 0 {
+            out.push(',');
+        }
+        hex(out, bytes);
+    }
+    out.push(']');
 }
 
-/// The pre-trace: the role and the shared authentication key a party starts from.
+/// Logs the initialization of a party with role `role` (`"a"` or `"b"`) and authentication key
+/// `auth_key`.
 pub fn init(role: &str, auth_key: &[u8]) {
     emit(
         "init",
-        &list(&[format!("\"{role}\""), hex(auth_key)]),
-        "null",
+        |o| {
+            push!(o, "[\"{role}\",");
+            hex(o, auth_key);
+            o.push(']');
+        },
+        |o| o.push_str("null"),
     );
 }
 
-/// `hkdf_to_slice(salt, ikm, info, okm)` wrote `okm`.
+/// Logs a call `hkdf_to_slice(salt, ikm, info, okm)`: the arguments are `salt`, `ikm`, `info`
+/// and the length of `okm`, the result is `okm`.
 pub fn hkdf(salt: &[u8], ikm: &[u8], info: &[u8], okm: &[u8]) {
     emit(
         "hkdf",
-        &list(&[hex(salt), hex(ikm), hex(info), okm.len().to_string()]),
-        &hex(okm),
+        |o| {
+            o.push('[');
+            for part in [salt, ikm, info] {
+                hex(o, part);
+                o.push(',');
+            }
+            push!(o, "{}]", okm.len());
+        },
+        |o| hex(o, okm),
     );
 }
 
-/// `libcrux_hmac::hmac`, with an event for each call.
+/// Calls `libcrux_hmac::hmac` and logs `key` and `data` as the arguments and the tag as the
+/// result. `alg` and `tag_length` are not logged.
 pub fn hmac(
     alg: libcrux_hmac::Algorithm,
     key: &[u8],
@@ -185,68 +242,71 @@ pub fn hmac(
     tag_length: Option<usize>,
 ) -> Vec<u8> {
     let tag = libcrux_hmac::hmac(alg, key, data, tag_length);
-    emit("hmac", &list(&[hex(key), hex(data)]), &hex(&tag));
+    emit("hmac", |o| hex_list(o, &[key, data]), |o| hex(o, &tag));
     tag
 }
 
-/// `generate` drew `seed` and returned `keys`.
+/// Logs a call of `incremental_mlkem768::generate` that drew `seed` and returned `keys`. The
+/// result is `[dk, hdr, ek]`.
 pub fn generate(seed: &[u8], keys: &Keys) {
     emit(
         "mlkem.generate",
-        &list(&[hex(seed)]),
-        &list(&[hex(&keys.dk), hex(&keys.hdr), hex(&keys.ek)]),
+        |o| hex_list(o, &[seed]),
+        |o| hex_list(o, &[&keys.dk, &keys.hdr, &keys.ek]),
     );
 }
 
-/// `encaps1(hdr)` drew `randomness` and returned `(ct1, es, ss)`.
+/// Logs a call `encaps1(hdr)` that drew `randomness` and returned `ct1`, the encapsulation state
+/// `es` and the shared secret `ss`. The result is `[es, ct1, ss]`.
 pub fn encaps1(hdr: &[u8], randomness: &[u8], ct1: &[u8], es: &[u8], ss: &[u8]) {
     emit(
         "mlkem.encaps1",
-        &list(&[hex(hdr), hex(randomness)]),
-        &list(&[hex(es), hex(ct1), hex(ss)]),
+        |o| hex_list(o, &[hdr, randomness]),
+        |o| hex_list(o, &[es, ct1, ss]),
     );
 }
 
-/// `encaps2(ek, es)` returned `ct2`. `es` is the argument, before the libcrux issue 1275 fix.
+/// Logs a call `encaps2(ek, es)` that returned `ct2`. `es` is the argument as passed, before
+/// the workaround for libcrux issue 1275 re-encodes it.
 pub fn encaps2(ek: &[u8], es: &[u8], ct2: &[u8]) {
-    emit("mlkem.encaps2", &list(&[hex(ek), hex(es)]), &hex(ct2));
+    emit("mlkem.encaps2", |o| hex_list(o, &[ek, es]), |o| hex(o, ct2));
 }
 
-/// `decaps(dk, ct1, ct2)` returns `ss`: log it and return it.
+/// Logs a call `decaps(dk, ct1, ct2)` that returned `ss`, and returns `ss`.
 pub fn decaps<T: AsRef<[u8]>>(dk: &[u8], ct1: &[u8], ct2: &[u8], ss: T) -> T {
     emit(
         "mlkem.decaps",
-        &list(&[hex(dk), hex(ct1), hex(ct2)]),
-        &hex(ss.as_ref()),
+        |o| hex_list(o, &[dk, ct1, ct2]),
+        |o| hex(o, ss.as_ref()),
     );
     ss
 }
 
-/// `ek_matches_header(ek, hdr)` returns `ok`: log it and return it.
+/// Logs a call `ek_matches_header(ek, hdr)` that returned `ok`, and returns `ok`.
 pub fn ek_matches_header(ek: &[u8], hdr: &[u8], ok: bool) -> bool {
     emit(
         "mlkem.ek_matches_header",
-        &list(&[hex(ek), hex(hdr)]),
-        if ok { "true" } else { "false" },
+        |o| hex_list(o, &[ek, hdr]),
+        |o| push!(o, "{ok}"),
     );
     ok
 }
 
-/// The decoder's `decoded_message()` at a call site of the chunked state machine.
+/// Logs `decoder.decoded_message()` as the result, with the number of points the decoder needs
+/// as the argument. The chunked state machine calls it after each chunk it adds to a decoder.
 pub fn decoded(decoder: &PolyDecoder) {
-    let ret = match decoder.decoded_message() {
-        Some(m) => hex(&m),
-        None => "null".to_string(),
-    };
     emit(
         "decoder.message",
-        &list(&[decoder.get_pts_needed().to_string()]),
-        &ret,
+        |o| push!(o, "[{}]", decoder.get_pts_needed()),
+        |o| match decoder.decoded_message() {
+            Some(m) => hex(o, &m),
+            None => o.push_str("null"),
+        },
     );
 }
 
-#[cfg(test)]
 /// The variant name and epoch of a state.
+#[cfg(test)]
 pub fn state_info(s: &States) -> (&'static str, u64) {
     match s {
         States::KeysUnsampled(st) => ("KeysUnsampled", st.epoch()),
@@ -263,88 +323,136 @@ pub fn state_info(s: &States) -> (&'static str, u64) {
     }
 }
 
+/// Appends the JSON object of a message: its epoch, the payload kind and, for a chunk, its index
+/// and data.
 #[cfg(test)]
-fn chunk_fields(kind: &str, c: &Chunk) -> String {
-    format!(
-        "\"kind\":\"{kind}\",\"index\":{},\"data\":{}",
-        c.index,
-        hex(&c.data)
-    )
-}
-
-#[cfg(test)]
-fn message(m: &Message) -> String {
-    let payload = match &m.payload {
-        MessagePayload::None => "\"kind\":\"none\"".to_string(),
-        MessagePayload::Hdr(c) => chunk_fields("hdr", c),
-        MessagePayload::Ek(c) => chunk_fields("ek", c),
-        MessagePayload::EkCt1Ack(c) => chunk_fields("ekct1ack", c),
-        MessagePayload::Ct1Ack(true) => "\"kind\":\"ct1ack\"".to_string(),
-        MessagePayload::Ct1Ack(false) => "\"kind\":\"ct1ackfalse\"".to_string(),
-        MessagePayload::Ct1(c) => chunk_fields("ct1", c),
-        MessagePayload::Ct2(c) => chunk_fields("ct2", c),
+fn message(o: &mut String, m: &Message) {
+    let (kind, chunk): (&str, Option<&Chunk>) = match &m.payload {
+        MessagePayload::None => ("none", None),
+        MessagePayload::Hdr(c) => ("hdr", Some(c)),
+        MessagePayload::Ek(c) => ("ek", Some(c)),
+        MessagePayload::EkCt1Ack(c) => ("ekct1ack", Some(c)),
+        MessagePayload::Ct1Ack(true) => ("ct1ack", None),
+        MessagePayload::Ct1Ack(false) => ("ct1ackfalse", None),
+        MessagePayload::Ct1(c) => ("ct1", Some(c)),
+        MessagePayload::Ct2(c) => ("ct2", Some(c)),
     };
-    format!("{{\"epoch\":{},{payload}}}", m.epoch)
+    push!(o, "{{\"epoch\":{},\"kind\":\"{kind}\"", m.epoch);
+    if let Some(c) = chunk {
+        push!(o, ",\"index\":{},\"data\":", c.index);
+        hex(o, &c.data);
+    }
+    o.push('}');
 }
 
+/// Appends `null` or the JSON object of an epoch secret.
 #[cfg(test)]
-fn key(k: &Option<EpochSecret>) -> String {
+fn key(o: &mut String, k: &Option<EpochSecret>) {
     match k {
-        None => "null".to_string(),
-        Some(k) => format!("{{\"epoch\":{},\"secret\":{}}}", k.epoch, hex(&k.secret)),
+        None => o.push_str("null"),
+        Some(k) => {
+            push!(o, "{{\"epoch\":{},\"secret\":", k.epoch);
+            hex(o, &k.secret);
+            o.push('}');
+        }
     }
 }
 
+/// Appends the state name and epoch `pre`, without brackets.
 #[cfg(test)]
-fn state_args(pre: (&'static str, u64)) -> String {
-    format!("\"{}\",{}", pre.0, pre.1)
+fn state_args(o: &mut String, pre: (&str, u64)) {
+    push!(o, "\"{}\",{}", pre.0, pre.1);
 }
 
+/// Appends the result of a state transition: `ok` appends the fields after the new state's name
+/// and epoch; an error becomes `{"err":..}`, its `Debug` text with `"` replaced by `'`.
 #[cfg(test)]
-/// `States::send` from a state named `pre` returned `r`.
+fn step_ret<T>(
+    o: &mut String,
+    r: &Result<T, Error>,
+    state: impl FnOnce(&T) -> &States,
+    ok: impl FnOnce(&mut String, &T),
+) {
+    match r {
+        Ok(t) => {
+            let (name, ep) = state_info(state(t));
+            push!(o, "{{\"state\":\"{name}\",\"epoch\":{ep}");
+            ok(o, t);
+            o.push('}');
+        }
+        Err(e) => {
+            push!(o, "{{\"err\":\"{}\"}}", format!("{e:?}").replace('"', "'"));
+        }
+    }
+}
+
+/// Logs a call of `States::send` from the state with name and epoch `pre` that returned `r`.
+#[cfg(test)]
 pub fn send_step(pre: (&'static str, u64), r: &Result<Send, Error>) {
-    let ret = match r {
-        Ok(s) => {
-            let (name, ep) = state_info(&s.state);
-            format!(
-                "{{\"state\":\"{name}\",\"epoch\":{ep},\"msg\":{},\"key\":{}}}",
-                message(&s.msg),
-                key(&s.key)
-            )
-        }
-        Err(e) => format!("{{\"err\":\"{}\"}}", format!("{e:?}").replace('"', "'")),
-    };
-    emit("States::send", &format!("[{}]", state_args(pre)), &ret);
-}
-
-#[cfg(test)]
-/// `States::recv` of `msg` from a state named `pre` returned `r`.
-pub fn recv_step(pre: (&'static str, u64), msg: &Message, r: &Result<Recv, Error>) {
-    let ret = match r {
-        Ok(s) => {
-            let (name, ep) = state_info(&s.state);
-            format!(
-                "{{\"state\":\"{name}\",\"epoch\":{ep},\"key\":{}}}",
-                key(&s.key)
-            )
-        }
-        Err(e) => format!("{{\"err\":\"{}\"}}", format!("{e:?}").replace('"', "'")),
-    };
     emit(
-        "States::recv",
-        &format!("[{},{}]", state_args(pre), message(msg)),
-        &ret,
+        "States::send",
+        |o| {
+            o.push('[');
+            state_args(o, pre);
+            o.push(']');
+        },
+        |o| {
+            step_ret(
+                o,
+                r,
+                |s| &s.state,
+                |o, s| {
+                    o.push_str(",\"msg\":");
+                    message(o, &s.msg);
+                    o.push_str(",\"key\":");
+                    key(o, &s.key);
+                },
+            )
+        },
     );
 }
 
+/// Logs a call of `States::recv` of `msg` from the state with name and epoch `pre` that
+/// returned `r`.
 #[cfg(test)]
-/// The network replaced the message `orig` of the peer by `tampered`, which the current party
-/// receives next. The event belongs to the operation of that `recv`, the next operation.
+pub fn recv_step(pre: (&'static str, u64), msg: &Message, r: &Result<Recv, Error>) {
+    emit(
+        "States::recv",
+        |o| {
+            o.push('[');
+            state_args(o, pre);
+            o.push(',');
+            message(o, msg);
+            o.push(']');
+        },
+        |o| {
+            step_ret(
+                o,
+                r,
+                |s| &s.state,
+                |o, s| {
+                    o.push_str(",\"key\":");
+                    key(o, &s.key);
+                },
+            )
+        },
+    );
+}
+
+/// Logs that the network replaced the peer's message `orig` by `tampered`, which the current
+/// party receives next. The event is written in the next operation, the one of that `recv`.
+#[cfg(test)]
 pub fn tamper(orig: &Message, tampered: &Message) {
     emit_at(
         1,
         "tamper",
-        &format!("[{},{}]", message(orig), message(tampered)),
-        "null",
+        |o| {
+            o.push('[');
+            message(o, orig);
+            o.push(',');
+            message(o, tampered);
+            o.push(']');
+        },
+        |o| o.push_str("null"),
     );
 }

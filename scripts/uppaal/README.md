@@ -51,13 +51,23 @@ steps, step k is the rejected step. `check` runs `verifyta` (path in
 the rejection) as a `.xtr` file, which the Symbolic Simulator opens.
 
 ```bash
+export VERIFYTA=/opt/uppaal/lib/app/bin/verifyta
 python3 -I scripts/uppaal/spqr_uppaal.py trace TRACE.jsonl OUT.xml --max-ops 700
-python3 -I scripts/uppaal/spqr_uppaal.py check /tmp/spqr-traces-R2-branch/v1.test.chaos.jsonl --max-ops 700
+python3 -I scripts/uppaal/spqr_uppaal.py check \
+  /tmp/spqr-monitor-mutants/r2-mac-le-epoch/traces/v1.test.chaos.jsonl --max-ops 700 --party A
 ```
+
+`scripts/monitor-mutants.sh` writes the mutant traces to
+`/tmp/spqr-monitor-mutants/<mutant>/traces/`. `scripts/viz-compare.sh`
+runs `check` on them and compares the rejected operation with the Lean
+monitor report.
 
 Options: `--party A|B` replays one party and does not check delivery,
 like the per-party verdict of the Lean monitor. `--drop-idle` removes the
 steps that send or receive `none` and leave the state unchanged.
+`--workdir DIR` sets where the model and witness go (default
+`/tmp/uppaal-spike`). The file name comes from the trace directory name,
+so use one directory per mutant.
 
 ## What the abstraction loses
 
@@ -71,3 +81,8 @@ steps that send or receive `none` and leave the state unchanged.
   so M1, R2 and R3 are accepted. With `--data calls`, R2 and R3 are accepted.
   With `formula`, the script gives `T_MISS` to the R2 and R3 steps whose
   `hmac` input is wrong, and no edge of the model accepts `T_MISS`.
+- R4 drops the result of the MAC check. `formula` finds it only when a
+  tampered message makes the MAC differ: the step gets `T_BAD`, the code
+  accepts the message, and no edge accepts `T_BAD` on an accepted
+  receive. So R4 is found on `v1.test.tamper_chaos.jsonl`, not on
+  `v1.test.chaos.jsonl`. R1 is not found (see the MAC key above).

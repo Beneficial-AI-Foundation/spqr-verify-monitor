@@ -8,8 +8,7 @@ A hand-written abstraction of `BraidModel` (`Spqr/Specs/Braid/StateMachine/Model
 Veil. It is a second model, not derived from `BraidModel`: nothing links the two except that
 the actions below follow the arms of `send`, `receiveEq` and `receive` of `BraidModel` one
 by one. There is one action per arm, so that a trace query names the arm of each step: Veil's
-trace queries take action names only, and one action with many branches made its `simp`
-preprocessing fail at 8 steps.
+trace queries take action names only.
 
 What the abstraction keeps: the eleven labels of §2.5, the epoch of each party as a `Nat`,
 the message type, the epoch of a message relative to the receiver's epoch, whether an output

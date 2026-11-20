@@ -20,7 +20,8 @@ For each party of a session the monitor:
 
 It also checks that each table entry is a function across the party's operations, and, for the
 session, the delivery of messages, the agreement of keys and the reuse of randomness (not
-covered by the theorems). -/
+covered by the theorems). A `tamper` event (a test changed a message in transit) is not a
+primitive call: the party check skips it, and the delivery check reads it. -/
 
 open Lean Std Aeneas Aeneas.Std BraidModel
 
@@ -399,14 +400,41 @@ structure SessionChecks where
   incompleteEpochs : List Nat
   randomness : Except String Unit
 
-/-- Delivery, key agreement and reuse of randomness for a session's events, in file order. -/
+/-- Whether `t` is a tampered copy of `m`: a chunk message with the same epoch, payload kind,
+chunk index and chunk length, and other chunk bytes. -/
+def tamperedCopy (m t : Msg MChunk) : Bool :=
+  let chunk : Payload MChunk → Option MChunk
+    | .hdr c | .ek c | .ekCt1Ack c | .ct1 c | .ct2 c => some c
+    | _ => none
+  match chunk m.payload, chunk t.payload with
+  | some c, some d =>
+    m.epoch == t.epoch && m.payload.ctorIdx == t.payload.ctorIdx && c.index == d.index &&
+      c.data.length == d.data.length && c.data != d.data
+  | _, _ => false
+
+/-- Delivery, key agreement and reuse of randomness for a session's events, in file order.
+
+Delivery: each receive consumes an equal earlier send of the other party. A `tamper` event of a
+party, with arguments `[orig, copy]`, says that the network made `copy` from `orig` and that the
+party receives `copy` in the same operation. `orig` must be an earlier send of the other party
+that no receive consumed (a send, not a tampered copy), and `copy` a tampered copy of it
+(`tamperedCopy`). The operation must have one tamper event, and its receive must be of `copy`.
+That receive consumes no send: `orig` stays available. -/
 def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.run do
-  -- delivery: each receive consumes an equal earlier send of the other party
+  -- delivery: each receive consumes an equal earlier send of the other party, or the copy of the
+  -- tamper event of its own operation
   let mut sent : HashMap (String × String) Nat := {}
+  -- the tamper event waiting for its receive: line, party, operation, copy
+  let mut pending : Option (Nat × String × Nat × String) := none
   let mut delivery : Except String Unit := .ok ()
   let mut seen : HashSet String := {}
   let mut randomness : Except String Unit := .ok ()
   for e in evs do
+    if let some (l, p, op, _) := pending then
+      if delivery.isOk && (e.party != p || e.op != op) then
+        delivery := .error s!"line {l}: the operation of the tamper event does not receive the \
+          tampered copy"
+        pending := none
     if e.f == "States::send" then
       if let .ok m := e.ret.getObjVal? "msg" then
         let k := (e.party, m.compress)
@@ -414,11 +442,36 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
     else if e.f == "States::recv" && delivery.isOk then
       if let some m := e.args[2]? then
         let peer := if e.party == "A" then "B" else "A"
-        let k := (peer, m.compress)
-        match sent[k]? with
-        | some (n + 1) => sent := sent.insert k n
-        | _ => delivery := .error s!"line {e.line}: party {e.party} received a message that \
-            party {peer} did not send"
+        match pending with
+        | some (l, _, _, c) =>
+          if m.compress != c then
+            delivery := .error s!"line {e.line}: party {e.party} received another message than \
+              the tampered copy of the tamper event on line {l}"
+          pending := none
+        | none =>
+          let k := (peer, m.compress)
+          match sent[k]? with
+          | some (n + 1) => sent := sent.insert k n
+          | _ => delivery := .error s!"line {e.line}: party {e.party} received a message that \
+              party {peer} did not send"
+    else if e.f == "tamper" && delivery.isOk then
+      let peer := if e.party == "A" then "B" else "A"
+      match e.args[0]?, e.args[1]? with
+      | some o, some t =>
+        match parseMsg o, parseMsg t with
+        | .ok mo, .ok mt =>
+          if pending.isSome then
+            delivery := .error s!"line {e.line}: two tamper events in one operation"
+          else if sent.getD (peer, o.compress) 0 == 0 then
+            delivery := .error s!"line {e.line}: party {e.party} received a tampered copy of a \
+              message that party {peer} did not send"
+          else if !tamperedCopy mo mt then
+            delivery := .error s!"line {e.line}: the tampered message differs from the original \
+              in more than the chunk bytes"
+          else
+            pending := some (e.line, e.party, e.op, t.compress)
+        | _, _ => delivery := .error s!"line {e.line}: bad message in a tamper event"
+      | _, _ => delivery := .error s!"line {e.line}: a tamper event needs two messages"
     else if (e.f == "mlkem.generate" || e.f == "mlkem.encaps1") && randomness.isOk then
       let i := if e.f == "mlkem.generate" then 0 else 1
       if let some r := e.args[i]? then
@@ -426,6 +479,10 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
         if seen.contains s then
           randomness := .error s!"line {e.line}: {e.f} reuses randomness of an earlier call"
         seen := seen.insert s
+  if let some (l, _, _, _) := pending then
+    if delivery.isOk then
+      delivery := .error s!"line {l}: the operation of the tamper event does not receive the \
+        tampered copy"
   -- keys: at most one per epoch and party, equal where both parties have one
   let toMap (ks : List Key) : Except String (HashMap Nat Bytes) :=
     ks.foldlM (init := {}) fun m (ep, s) =>

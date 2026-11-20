@@ -15,6 +15,9 @@ use crate::Epoch;
 use crate::Error;
 
 use super::basic_messaging_behavior::BasicMessagingBehavior;
+
+#[cfg(feature = "monitor")]
+pub mod tamper;
 use super::messaging_behavior::MessagingBehavior;
 
 pub struct OrchestratorBase<K>

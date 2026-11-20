@@ -30,6 +30,20 @@ mod test {
         orchestrator::random_balanced::<Cka, _>(&mut rng)
     }
 
+    #[cfg(feature = "monitor")]
+    #[test]
+    fn tamper_chaos() -> Result<(), Error> {
+        let mut rng = OsRng.unwrap_err();
+        orchestrator::tamper::tamper_chaos(10000, 0.3, &mut rng)
+    }
+
+    #[cfg(feature = "monitor")]
+    #[test]
+    fn tamper_early() -> Result<(), Error> {
+        let mut rng = OsRng.unwrap_err();
+        orchestrator::tamper::tamper_early(6, 300, &mut rng)
+    }
+
     #[test]
     fn chaos() -> Result<(), Error> {
         type Scka = states::States;

@@ -32,11 +32,22 @@ structure MChunk where
 /-- An encoder: its message and the number of chunks emitted so far. -/
 abbrev MEnc := Bytes × Nat
 
-/-- A decoder: its message size in bytes and the chunks added to it, in order. -/
-abbrev MDec := Nat × List MChunk
+/-- A decoder: its message size in bytes, the chunks added to it, newest first, and a hash of
+both that `addChunk` extends. Adding a chunk and hashing a decoder take constant time. -/
+structure MDec where
+  size : Nat
+  chunks : List MChunk
+  hashv : UInt64
+  deriving DecidableEq, Inhabited
+
+instance : Hashable MDec := ⟨MDec.hashv⟩
+
+/-- The decoder of a message of `n` bytes with no chunks. -/
+def MDec.new (n : Nat) : MDec := ⟨n, [], hash n⟩
 
 /-- Add a chunk to a decoder. -/
-def MDec.addChunk (d : MDec) (c : MChunk) : MDec := (d.1, d.2 ++ [c])
+def MDec.addChunk (d : MDec) (c : MChunk) : MDec :=
+  ⟨d.size, c :: d.chunks, mixHash d.hashv (hash c)⟩
 
 /-- The chunk of a payload, if it has one. -/
 def chunkOf : Payload MChunk → Option MChunk
@@ -94,7 +105,7 @@ def Tables.prims (T : Tables) : OPrims MEnc MDec MChunk where
     let c := if enc.2 < enc.1.length / 32 then some (systematicChunk enc.1 enc.2)
       else T.parity[enc]?
     c.map fun c => (c, (enc.1, enc.2 + 1))
-  decoderNew n := (n, [])
+  decoderNew := MDec.new
   addChunk := MDec.addChunk
   message d := T.message[d]?
   keyGen r := T.keyGen[r]?

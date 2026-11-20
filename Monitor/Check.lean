@@ -356,8 +356,8 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
       match obs, decoded o with
       | .recvOk m .. , .ok (some (pts, res)) | .recvErr m, .ok (some (pts, res)) =>
         if let some d := decoderAfter σ m then
-          if d.1 != 2 * pts then
-            return fail s!"operation {o.op}: decoder of {d.1} bytes, code needs {pts} points"
+          if d.size != 2 * pts then
+            return fail s!"operation {o.op}: decoder of {d.size} bytes, code needs {pts} points"
               steps.size
           match addEntry T all (.message d res) with
           | .ok (t, a) => T := t; all := a

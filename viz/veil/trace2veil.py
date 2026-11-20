@@ -192,7 +192,9 @@ def query(sts, name: str) -> str:
         body.append(f"  -- line {s['line']}, party {s['party']}, op {s['op']}")
         body.append(f"  {arm(s)}")
         body.append(f"  {assertion(s)}")
-    return f"sat trace [{name}] {{\n" + "\n".join(body) + "\n}\n"
+    # An unsatisfiable query is reported as information, so that Lean exits 0 for both verdicts.
+    return (f"set_option veil.violationIsError false in\nsat trace [{name}] {{\n"
+            + "\n".join(body) + "\n}\n")
 
 
 def start_states(sts, starts) -> dict:
@@ -262,13 +264,15 @@ def run(veil: str, sts, keep: str, tag: str, start: int = 0, length=None, state=
     out = p.stdout + p.stderr
     with open(path[:-5] + ".out", "w") as f:
         f.write(out)
+    if p.returncode in (137, -9):
+        raise SystemExit(f"{path}: killed at the memory cap {MEM}")
+    if p.returncode != 0:
+        raise SystemExit(f"Lean exited with {p.returncode} on {path}:\n{out[-3000:]}")
     if "Satisfying trace found" in out:
         return True, time.time() - t, out
     if "No satisfying trace exists" in out:
         return False, time.time() - t, out
-    if p.returncode in (137, -9):
-        raise SystemExit(f"{path}: killed at the memory cap {MEM}")
-    raise SystemExit(f"unexpected Lean output for {path}:\n{out[-3000:]}")
+    raise SystemExit(f"no verdict in the Lean output for {path}:\n{out[-3000:]}")
 
 
 def main():

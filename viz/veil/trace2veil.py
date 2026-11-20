@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Turn a monitor trace (JSONL, see Monitor/Trace.lean) into Veil trace queries on SpqrBraid.
+"""Turn a monitor trace into Veil trace queries on SpqrBraid.lean, and run them.
 
+The trace is a JSONL file of the cargo feature `monitor` (format in `scripts/spqr_trace.py`).
 Each step event (States::send / States::recv) of one session becomes one action of
 SpqrBraid.lean (send, recv or recvErr), followed by an `assert` that pins what the trace
-logged: the party, the message type, the epoch of the message relative to the receiver, the
-MAC calls of the operation, whether a key was emitted, and the state and epoch after the step.
+logged: the party, the message type, the epoch of the message relative to the receiver,
+whether a key was emitted, and the state and epoch after the step. The assert also pins a MAC
+observation (absent, good or bad) that this script computes from the `hmac` calls of the
+operation (`mac_obs`). Veil sees only that observation, not the bytes.
 
 A step that repeats the previous step of the same party and leaves its state unchanged is
 dropped: in SpqrBraid it is enabled again and changes nothing, so the query keeps its answer.
@@ -19,43 +22,33 @@ Modes:
   check   run that query in Lean
   search  windowed queries up to the first step with no model
 
-Usage:
-  trace2veil.py query  TRACE [--session S] [--steps N]
-  trace2veil.py check  TRACE [--session S] [--steps N] --veil DIR [--keep DIR]
-  trace2veil.py search TRACE [--session S] [--steps N] --veil DIR [--window W] [--jobs J]
+Usage (`check` and `search` run `lake lean` in a built Veil checkout, under a memory cap):
+  python3 -I viz/veil/trace2veil.py query  TRACE [--session S] [--steps N]
+  python3 -I viz/veil/trace2veil.py check  TRACE [--session S] [--steps N] --veil DIR [--keep DIR]
+  python3 -I viz/veil/trace2veil.py search TRACE [--session S] [--steps N] --veil DIR
+                                           [--window W] [--jobs J]
 """
 
 import argparse
-import json
 import os
 import subprocess
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-MEM = "12G"
 HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))
+from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
+                        KIND_ALIASES, LABELS, STEP_FUNCS, mac_input, operations)
+
+MEM = "12G"
 MODEL = os.path.join(HERE, "SpqrBraid.lean")
 
-PROTOCOL_INFO = b"Signal_PQCKA_V1_MLKEM768"
-HDR_LABEL = b":ekheader"
-CT_LABEL = b":ciphertext"
-HEADER_SIZE = 64
-CT1_SIZE = 960
-CT2_SIZE = 128
-
-LABELS = {
-    "KeysUnsampled": "keysUnsampled", "KeysSampled": "keysSampled",
-    "HeaderSent": "headerSent", "Ct1Received": "ct1Received",
-    "EkSentCt1Received": "ekSentCt1Received", "NoHeaderReceived": "noHeaderReceived",
-    "HeaderReceived": "headerReceived", "Ct1Sampled": "ct1Sampled",
-    "EkReceivedCt1Sampled": "ekReceivedCt1Sampled", "Ct1Acknowledged": "ct1Acknowledged",
-    "Ct2Sampled": "ct2Sampled",
-}
-KINDS = {
-    "none": "kNone", "ct1ackfalse": "kNone", "ct1ack": "kCt1Ack", "hdr": "kHdr",
-    "ek": "kEk", "ekct1ack": "kEkCt1Ack", "ct1": "kCt1", "ct2": "kCt2",
-}
+# Trace names to SpqrBraid names: `KeysUnsampled` -> `keysUnsampled`, `ekct1ack` -> `kEkCt1Ack`.
+VEIL_LABELS = {name: name[0].lower() + name[1:] for name in LABELS}
+VEIL_KINDS = {"none": "kNone", "hdr": "kHdr", "ek": "kEk", "ekct1ack": "kEkCt1Ack",
+              "ct1ack": "kCt1Ack", "ct1": "kCt1", "ct2": "kCt2"}
+VEIL_KINDS.update({k: VEIL_KINDS[v] for k, v in KIND_ALIASES.items()})
 PARTIES = {"A": "pA", "B": "pB"}
 
 
@@ -64,9 +57,8 @@ def mac_input_ok(data: bytes, epoch: int, ops: list) -> bool:
     PROTOCOL_INFO, the label, the epoch as 8 big-endian bytes, then the header (64 bytes) or
     ct1 || ct2 (960 + 128 bytes). For MacCt, when the operation logged decaps or encaps2,
     the ciphertext bytes must also be the ones of that call."""
-    ep = epoch.to_bytes(8, "big")
-    for lab, size in ((HDR_LABEL, HEADER_SIZE), (CT_LABEL, CT1_SIZE + CT2_SIZE)):
-        prefix = PROTOCOL_INFO + lab + ep
+    for lab, size in ((HDR_LABEL, HDR_SIZE), (CT_LABEL, CT1_SIZE + CT2_SIZE)):
+        prefix = mac_input(lab, epoch, b"")
         if data.startswith(prefix) and len(data) == len(prefix) + size:
             if lab == CT_LABEL:
                 ct = data[len(prefix):]
@@ -81,55 +73,47 @@ def mac_input_ok(data: bytes, epoch: int, ops: list) -> bool:
     return False
 
 
-# With `--any-mac-form`, every MAC call counts as `good`: the abstraction without the byte
-# check of `mac_input_ok`.
-ANY_MAC_FORM = False
-
-
-def mac_obs(ops: list, epoch: int) -> str:
+def mac_obs(ops: list, epoch: int, any_mac_form: bool) -> str:
+    """The MAC observation of an operation: `absent` (no `hmac` call), `good` (every `hmac`
+    input passes `mac_input_ok`, or `any_mac_form` is set) or `bad`."""
     calls = [bytes.fromhex(e["args"][1]) for e in ops if e["f"] == "hmac"]
     if not calls:
         return "absent"
-    if ANY_MAC_FORM:
+    if any_mac_form:
         return "good"
     return "good" if all(mac_input_ok(c, epoch, ops) for c in calls) else "bad"
 
 
-def steps(path: str, session: int):
+def steps(path: str, session: int, any_mac_form: bool = False):
     """The step observations of one session, in file order."""
-    pending = {}
-    with open(path) as f:
-        for n, line in enumerate(f, 1):
-            e = json.loads(line)
-            if e["s"] != session:
-                continue
-            key = (e["p"], e["op"])
-            pending.setdefault(key, []).append(e)
-            if e["f"] not in ("States::send", "States::recv"):
-                continue
-            ops = pending.pop(key)
-            pre_label, pre_epoch = e["args"][0], e["args"][1]
-            ret = e["ret"]
-            st = {"line": n, "op": e["op"], "party": e["p"], "mac": mac_obs(ops, pre_epoch)}
-            if e["f"] == "States::send":
-                if "err" in ret:
-                    raise SystemExit(f"line {n}: send returned an error")
-                st.update(action="send", kind=KINDS[ret["msg"]["kind"]],
-                          rel="same", key=ret["key"] is not None,
-                          label=LABELS[ret["state"]], epoch=ret["epoch"])
+    for ops in operations(path, session):
+        e = ops[-1]
+        if e["f"] not in STEP_FUNCS:
+            continue
+        n = e["line"]
+        pre_label, pre_epoch = e["args"][0], e["args"][1]
+        ret = e["ret"]
+        st = {"line": n, "op": e["op"], "party": e["p"],
+              "mac": mac_obs(ops, pre_epoch, any_mac_form)}
+        if e["f"] == "States::send":
+            if "err" in ret:
+                raise SystemExit(f"line {n}: send returned an error")
+            st.update(action="send", kind=VEIL_KINDS[ret["msg"]["kind"]],
+                      rel="same", key=ret["key"] is not None,
+                      label=VEIL_LABELS[ret["state"]], epoch=ret["epoch"])
+        else:
+            msg = e["args"][2]
+            d = msg["epoch"] - pre_epoch
+            rel = "older" if d < 0 else "same" if d == 0 else "next" if d == 1 else "later"
+            st.update(kind=VEIL_KINDS[msg["kind"]], rel=rel)
+            if "err" in ret:
+                st.update(action="recvErr", key=False,
+                          label=VEIL_LABELS[pre_label], epoch=pre_epoch)
             else:
-                msg = e["args"][2]
-                d = msg["epoch"] - pre_epoch
-                rel = "older" if d < 0 else "same" if d == 0 else "next" if d == 1 else "later"
-                st.update(kind=KINDS[msg["kind"]], rel=rel)
-                if "err" in ret:
-                    st.update(action="recvErr", key=False,
-                              label=LABELS[pre_label], epoch=pre_epoch)
-                else:
-                    st.update(action="recv", key=ret["key"] is not None,
-                              label=LABELS[ret["state"]], epoch=ret["epoch"])
-            st["pre"] = (LABELS[pre_label], pre_epoch)
-            yield st
+                st.update(action="recv", key=ret["key"] is not None,
+                          label=VEIL_LABELS[ret["state"]], epoch=ret["epoch"])
+        st["pre"] = (VEIL_LABELS[pre_label], pre_epoch)
+        yield st
 
 
 def compress(sts):
@@ -276,22 +260,28 @@ def run(veil: str, sts, keep: str, tag: str, start: int = 0, length=None):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("mode", choices=["query", "search", "check"])
-    ap.add_argument("trace")
-    ap.add_argument("--session", type=int, default=1)
-    ap.add_argument("--steps", type=int, help="use only the first N kept steps")
-    ap.add_argument("--veil", help="Veil checkout to run `lake lean` in")
-    ap.add_argument("--window", type=int, default=12, help="steps per query (search)")
-    ap.add_argument("--jobs", type=int, default=3, help="queries at a time (search)")
-    ap.add_argument("--keep", default="/tmp/veil-spike/q", help="where to write the queries")
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("mode", choices=["query", "search", "check"], help="see above")
+    ap.add_argument("trace", help="JSONL trace of the cargo feature `monitor`")
+    ap.add_argument("--session", type=int, default=1, help="session to replay (default 1)")
+    ap.add_argument("--steps", type=int, metavar="N", help="use only the first N kept steps")
+    ap.add_argument("--veil", metavar="DIR",
+                    help="built Veil checkout to run `lake lean` in (check, search)")
+    ap.add_argument("--window", type=int, default=12,
+                    help="steps per query (search; default 12)")
+    ap.add_argument("--jobs", type=int, default=3,
+                    help="queries at a time (search; default 3)")
+    ap.add_argument("--keep", metavar="DIR", default="/tmp/veil-spike/q",
+                    help="where to write the queries and Lean outputs (check, search; "
+                         "default /tmp/veil-spike/q)")
     ap.add_argument("--any-mac-form", action="store_true",
                     help="count every MAC call as good (no byte check of its input)")
     a = ap.parse_args()
-    global ANY_MAC_FORM
-    ANY_MAC_FORM = a.any_mac_form
+    if a.mode != "query" and not a.veil:
+        ap.error(f"{a.mode} needs --veil")
 
-    raw = list(steps(a.trace, a.session))
+    raw = list(steps(a.trace, a.session, a.any_mac_form))
     sts = compress(raw)
     if a.steps is not None:
         sts = sts[: a.steps]

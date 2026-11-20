@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
-"""Draw SPQR monitor traces as SVG.
+"""Draw one session of an SPQR monitor trace as an SVG figure.
 
-Two views of one session of a JSONL trace (the format of `src/monitor.rs`):
+The trace is a JSONL file of the cargo feature `monitor` (`src/monitor.rs`). Two views:
 
   overview  the braid state of both parties over the whole session, one colored band per
             party, with epoch ticks, emitted keys and the operation the monitor rejected
   seq       a sequence diagram of a window of operations: one lifeline per party, a chip for
-            each step, an arrow from each send to its receive, tampered and dropped messages,
+            each step, an arrow from each send to its receive, tampered and lost messages,
             and the monitor's diagnosis at the rejected step
 
-The verdicts come from a report of the Lean monitor (`lake env lean --run Monitor/Main.lean`),
-passed with `--report`. The viewer does not check anything itself.
+The rejections come from a report of the Lean monitor (`lake env lean --run Monitor/Main.lean`),
+passed with `--report`. The viewer checks nothing itself.
 
-Examples:
-  trace-viewer.py overview T.jsonl --session 1 --report report.txt -o overview.svg
-  trace-viewer.py seq T.jsonl --session 1 --report report.txt --around-reject A --radius 30 -o seq.svg
-  trace-viewer.py seq T.jsonl --session 1 --from 0 --to 120 --hide-idle -o start.svg
+Examples (from the repository root):
+  python3 scripts/trace-viewer.py overview T.jsonl --session 1 --report report.txt -o overview.svg
+  python3 scripts/trace-viewer.py seq T.jsonl --report report.txt --around-reject A -o seq.svg
+  python3 scripts/trace-viewer.py seq T.jsonl --from 0 --to 120 --hide-idle -o start.svg
 """
 
 import argparse
-import json
 import os
 import re
 import sys
 from html import escape
 
-LABELS = [
-    "KeysUnsampled", "KeysSampled", "HeaderSent", "Ct1Received", "EkSentCt1Received",
-    "NoHeaderReceived", "HeaderReceived", "Ct1Sampled", "EkReceivedCt1Sampled",
-    "Ct1Acknowledged", "Ct2Sampled",
-]
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from spqr_trace import LABELS, STEP_FUNCS, operations, short_label  # noqa: E402
+
 # Blues for the half that sends the encapsulation key, oranges for the half that sends the
 # ciphertext.
 COLORS = {
@@ -45,11 +42,8 @@ GREY = "#9e9e9e"
 FONT = "font-family='DejaVu Sans, Helvetica, Arial, sans-serif'"
 
 
-def short(label):
-    return re.sub(r"[a-z]", "", label) if label else "?"
-
-
 def msg_key(m):
+    """A key that identifies a message: (epoch, kind, chunk index, chunk data)."""
     if not m or m.get("kind") in (None, "none"):
         return None
     return (m.get("epoch"), m.get("kind"), m.get("index"), m.get("data"))
@@ -62,31 +56,23 @@ def msg_text(m):
 
 
 class Op:
-    def __init__(self, n, party):
-        self.n = n
-        self.party = party
+    """One operation: its step event, its tamper event and the step summary `info`."""
+
+    def __init__(self, events):
+        self.n = events[0]["op"]
+        self.party = events[0]["p"]
         self.step = None
-        self.calls = 0
         self.tamper = None
+        for e in events:
+            if e["f"] in STEP_FUNCS:
+                self.step = e
+            elif e["f"] == "tamper":
+                self.tamper = e
+        self.info = step_info(self.step)
 
 
 def load(path, session):
-    ops = {}
-    with open(path) as f:
-        for line in f:
-            if not line.strip():
-                continue
-            e = json.loads(line)
-            if e.get("s") != session or e.get("op", 0) == 0:
-                continue
-            op = ops.setdefault(e["op"], Op(e["op"], e["p"]))
-            if e["f"] in ("States::send", "States::recv"):
-                op.step = e
-            elif e["f"] == "tamper":
-                op.tamper = e
-            else:
-                op.calls += 1
-    return [ops[k] for k in sorted(ops)]
+    return [Op(events) for events in operations(path, session)]
 
 
 def parse_report(path, trace, session):
@@ -94,38 +80,39 @@ def parse_report(path, trace, session):
     rejects = {}
     if not path:
         return rejects
-    current = None
+    want = os.path.realpath(trace)
+    current = False
     pat = re.compile(r"^\s+session (\d+) party (\w+): REJECTED: (.*)$")
     with open(path) as f:
         for line in f:
             if not line.startswith(" ") and ": " in line and ".jsonl" in line:
-                current = line.split(":")[0]
+                current = os.path.realpath(line.split(":")[0]) == want
                 continue
             m = pat.match(line.rstrip("\n"))
-            if not m or current is None or os.path.realpath(current) != os.path.realpath(trace):
-                continue
-            if int(m.group(1)) != session:
+            if not m or not current or int(m.group(1)) != session:
                 continue
             text = m.group(3)
             o = re.search(r"operation (\d+)", text)
             diag = text.split(": ", 1)[1] if ": " in text else text
-            rejects[m.group(2)] = (int(o.group(1)) if o else None, diag, text)
+            rejects[m.group(2)] = (int(o.group(1)) if o else None, diag)
     return rejects
 
 
-def step_info(op):
-    """(pre label, post label, post epoch, key epoch or None, sent msg, received msg, error)."""
-    e = op.step
+def step_info(e):
+    """(pre label, post label, post epoch, key epoch or None, sent msg, received msg, error)
+    of a step event, or None."""
     if e is None:
         return None
-    ret = e.get("ret") or {}
+    ret = e.get("ret")
+    if not isinstance(ret, dict):
+        ret = {}
     pre = e["args"][0]
-    err = ret.get("err") if isinstance(ret, dict) else None
-    post = ret.get("state") if isinstance(ret, dict) else None
-    epoch = ret.get("epoch") if isinstance(ret, dict) else None
-    key = ret.get("key") if isinstance(ret, dict) else None
+    err = ret.get("err")
+    post = ret.get("state")
+    epoch = ret.get("epoch")
+    key = ret.get("key")
     kep = key.get("epoch") if isinstance(key, dict) else (epoch if key else None)
-    sent = ret.get("msg") if e["f"] == "States::send" and isinstance(ret, dict) else None
+    sent = ret.get("msg") if e["f"] == "States::send" else None
     recv = e["args"][2] if e["f"] == "States::recv" and len(e["args"]) > 2 else None
     return pre, post, epoch, kep, sent, recv, err
 
@@ -155,7 +142,7 @@ def legend(x, y, cols=4):
         cy = y + (i // cols) * 18
         out.append(f"<rect x='{cx}' y='{cy - 10}' width='14' height='12' rx='2' "
                    f"fill='{COLORS[lab]}' stroke='#555' stroke-width='0.5'/>")
-        out.append(svg_text(cx + 19, cy, f"{lab} ({short(lab)})", 10))
+        out.append(svg_text(cx + 19, cy, f"{lab} ({short_label(lab)})", 10))
     return out
 
 
@@ -163,7 +150,10 @@ def overview(ops, rejects, title):
     W, left, right = 1200, 70, 30
     span = W - left - right
     first, last = ops[0].n, ops[-1].n
-    x = lambda n: left + span * (n - first) / max(1, last - first)
+
+    def x(n):
+        return left + span * (n - first) / max(1, last - first)
+
     bands = {"A": 70, "B": 150}
     bh = 40
     out = [svg_text(left, 28, title, 15, weight="bold")]
@@ -171,14 +161,14 @@ def overview(ops, rejects, title):
         out.append(svg_text(left - 12, y0 + bh / 2 + 5, party, 15, "end", weight="bold"))
         pops = [o for o in ops if o.party == party and o.step is not None]
         rej = rejects.get(party, (None,))[0]
-        runs = []  # (start op, end op, label, epoch)
+        runs = []  # (start op, label, epoch)
         for o in pops:
-            _, post, ep, *_ = step_info(o)
-            if runs and runs[-1][2] == post:
-                runs[-1][1] = o.n
-            else:
-                runs.append([o.n, o.n, post, ep])
-        for i, (a, b, lab, ep) in enumerate(runs):
+            pre, post, ep, *_, err = o.info
+            if err:  # a failed receive leaves the state unchanged
+                post, ep = pre, o.step["args"][1]
+            if not runs or runs[-1][1] != post:
+                runs.append((o.n, post, ep))
+        for i, (a, lab, _) in enumerate(runs):
             nb = runs[i + 1][0] if i + 1 < len(runs) else last
             x0, x1 = x(a), max(x(nb), x(a) + 0.6)
             fill = COLORS.get(lab, "#eee")
@@ -190,7 +180,7 @@ def overview(ops, rejects, title):
                    f"stroke='#555' stroke-width='0.6'/>")
         # epoch ticks
         last_ep, last_lx = None, -1e9
-        for a, b, lab, ep in runs:
+        for a, _, ep in runs:
             if ep != last_ep:
                 xx = x(a)
                 out.append(f"<line x1='{xx:.1f}' y1='{y0 - 4}' x2='{xx:.1f}' y2='{y0}' "
@@ -201,7 +191,7 @@ def overview(ops, rejects, title):
                 last_ep = ep
         # keys
         for o in pops:
-            kep = step_info(o)[3]
+            kep = o.info[3]
             if kep is not None:
                 xx = x(o.n)
                 yy = y0 + bh + 2
@@ -228,7 +218,7 @@ def overview(ops, rejects, title):
     out += legend(left + 260, ay + 58)
     H = ay + 120
     y = H
-    for party, (rop, diag, _) in sorted(rejects.items()):
+    for party, (_, diag) in sorted(rejects.items()):
         for line in wrap(f"{party}: {diag}", 170):
             out.append(svg_text(left, y, line, 10, fill=RED))
             y += 14
@@ -239,18 +229,18 @@ def overview(ops, rejects, title):
             + "".join(out) + "</svg>")
 
 
-def compact_rows(rows, rejects, recv_at, tampered):
+def compact_rows(rows, rejects, recv_at):
     """The rows of the `--compact` view, in order."""
     keep = set()
     for o in rows:
-        pre, post, ep, kep, sent, recv, err = step_info(o)
+        pre, post, ep, kep, _, _, err = o.info
         rej = rejects.get(o.party, (None,))[0]
         if (o.n == rej or kep is not None or err or o.tamper or pre != post
                 or o.step["args"][1] != ep):
             keep.add(o.n)
     # The sends whose message a kept receive got.
     for o in rows:
-        k = msg_key(step_info(o)[4])
+        k = msg_key(o.info[4])
         if k is None:
             continue
         if any(n in keep for n in recv_at.get((o.party, k), []) if n > o.n):
@@ -260,18 +250,15 @@ def compact_rows(rows, rejects, recv_at, tampered):
 
 def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
     # Match each send to its receive (tampered messages via the tamper events).
-    sent_at, recv_at, tampered = {}, {}, {}
+    # recv_at maps (sender, message key) to the receiving operations, in increasing order.
+    recv_at, tampered = {}, {}
     for o in ops:
-        info = step_info(o)
-        if info is None:
+        if o.info is None:
             continue
         if o.tamper:
             orig, new = o.tamper["args"]
             tampered[msg_key(new)] = msg_key(orig)
-        k = msg_key(info[4])
-        if k is not None:
-            sent_at.setdefault((o.party, k), []).append(o.n)
-        k = msg_key(info[5])
+        k = msg_key(o.info[5])
         if k is not None:
             src = "B" if o.party == "A" else "A"
             k = tampered.get(k, k)
@@ -281,7 +268,7 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         if o.step is None or not lo <= o.n <= hi:
             return False
         if hide_idle:
-            pre, post, ep, kep, sent, recv, err = step_info(o)
+            pre, post, _, kep, sent, recv, err = o.info
             rej = rejects.get(o.party, (None,))[0]
             if o.n == rej or kep is not None or err:
                 return True
@@ -293,9 +280,8 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
 
     rows = [o for o in ops if visible(o)]
     if compact:
-        rows = compact_rows(rows, rejects, recv_at, tampered)
-    if len(rows) > max_rows:
-        rows = rows[:max_rows]
+        rows = compact_rows(rows, rejects, recv_at)
+    rows = rows[:max_rows]
     row_of = {o.n: i for i, o in enumerate(rows)}
 
     W = 860
@@ -311,11 +297,15 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
                             "white", "bold"))
         out.append(f"<line x1='{xx}' y1='{t0 + 36}' x2='{xx}' y2='{H - 20}' stroke='#90a4ae' "
                    f"stroke-dasharray='4 3'/>")
-    y_of = lambda i: top + rh * i + rh / 2
+
+    def y_of(i):
+        return top + rh * i + rh / 2
+
+    tampered_orig = set(tampered.values())
     notes = []
     arrows = []
     for i, o in enumerate(rows):
-        pre, post, ep, kep, sent, recv, err = step_info(o)
+        _, post, ep, kep, sent, _, err = o.info
         y = y_of(i)
         rej = rejects.get(o.party, (None,))[0]
         after = rej is not None and o.n > rej
@@ -349,8 +339,8 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         k = msg_key(sent)
         if k is not None:
             dst = "B" if o.party == "A" else "A"
-            later = [n for n in recv_at.get((o.party, k), []) if n > o.n]
-            arrows.append((i, o.party, dst, later[0] if later else None, sent, k))
+            rn = next((n for n in recv_at.get((o.party, k), []) if n > o.n), None)
+            arrows.append((i, o.party, dst, rn, sent, k))
     for i, src, dst, rn, m, k in arrows:
         x0, x1 = xs[src], xs[dst]
         d = 1 if x1 > x0 else -1
@@ -358,25 +348,22 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         x1 -= d * 95
         y0 = y_of(i)
         label = msg_text(m)
-        tam = k in tampered.values()
+        tam = k in tampered_orig
         if rn is None:
             xm = x0 + (x1 - x0) * 0.35
-            arrows_svg = (f"<line x1='{x0}' y1='{y0}' x2='{xm:.1f}' y2='{y0 + 6}' "
-                          f"stroke='{GREY}' stroke-width='1'/>"
-                          f"<path d='M{xm - 4:.1f},{y0 + 2} l8,8 M{xm + 4:.1f},{y0 + 2} l-8,8' "
-                          f"stroke='{GREY}' stroke-width='1.5'/>")
-            out.append(arrows_svg)
+            out.append(f"<line x1='{x0}' y1='{y0}' x2='{xm:.1f}' y2='{y0 + 6}' "
+                       f"stroke='{GREY}' stroke-width='1'/>"
+                       f"<path d='M{xm - 4:.1f},{y0 + 2} l8,8 M{xm + 4:.1f},{y0 + 2} l-8,8' "
+                       f"stroke='{GREY}' stroke-width='1.5'/>")
             out.append(svg_text(x0 + d * 6, y0 - 3, f"{label} (lost)", 10,
                                 "start" if d > 0 else "end", GREY))
             continue
         if rn not in row_of:
             continue
         y1 = y_of(row_of[rn])
-        dash = ""
         col = RED if tam else "#455a64"
         out.append(f"<line x1='{x0}' y1='{y0}' x2='{x1}' y2='{y1:.1f}' stroke='{col}' "
-                   f"stroke-width='{1.6 if tam else 1}' marker-end='url(#ah{'r' if tam else ''})'"
-                   f"{dash}/>")
+                   f"stroke-width='{1.6 if tam else 1}' marker-end='url(#ah{'r' if tam else ''})'/>")
         out.append(svg_text(x0 + d * 6, y0 - 3, label, 10, "start" if d > 0 else "end", col))
         if tam:
             xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
@@ -408,31 +395,43 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=["overview", "seq"])
-    ap.add_argument("trace")
-    ap.add_argument("--session", type=int, default=1)
-    ap.add_argument("--report", help="output of the Lean monitor on this trace")
-    ap.add_argument("--title")
-    ap.add_argument("--from", dest="lo", type=int, default=0)
-    ap.add_argument("--to", dest="hi", type=int, default=10**12)
+    ap.add_argument("mode", choices=["overview", "seq"], help="the view to draw")
+    ap.add_argument("trace", help="JSONL trace of the cargo feature `monitor`")
+    ap.add_argument("--session", type=int, default=1, help="session to draw (default 1)")
+    ap.add_argument("--report", help="output of the Lean monitor on this trace; without it, "
+                                     "no rejection is shown")
+    ap.add_argument("--title", help="figure title (default: trace file name and session; "
+                                    "an empty title drops the title line in seq)")
+    ap.add_argument("--from", dest="lo", type=int, default=0, metavar="OP",
+                    help="first operation to draw (default 0)")
+    ap.add_argument("--to", dest="hi", type=int, default=10**12, metavar="OP",
+                    help="last operation to draw (default: the last one)")
     ap.add_argument("--around-reject", choices=["A", "B"],
-                    help="center the window on the operation where this party was rejected")
-    ap.add_argument("--radius", type=int, default=30)
+                    help="seq: draw from RADIUS operations before to 6 operations after the "
+                         "operation where this party was rejected; overrides --from and --to")
+    ap.add_argument("--radius", type=int, default=30,
+                    help="operations before the rejection for --around-reject (default 30)")
     ap.add_argument("--hide-idle", action="store_true",
-                    help="hide sends that emit no message")
+                    help="seq: hide sends that emit no message, and receives of no message that "
+                         "leave the state unchanged")
     ap.add_argument("--compact", action="store_true",
-                    help="keep only steps that change state, emit a key, fail, are rejected or "
-                         "tampered, and the sends that the kept receives got their message from")
-    ap.add_argument("--max-rows", type=int, default=70)
-    ap.add_argument("-o", "--output", default="-")
+                    help="seq: keep only steps that change the state or epoch, emit a key, fail, "
+                         "are rejected or receive a tampered message, and the sends whose "
+                         "message a kept receive got")
+    ap.add_argument("--max-rows", type=int, default=70,
+                    help="seq: draw at most this many steps (default 70)")
+    ap.add_argument("-o", "--output", default="-", help="SVG file (default: standard output)")
     a = ap.parse_args()
     ops = load(a.trace, a.session)
     if not ops:
         sys.exit(f"no operations for session {a.session} in {a.trace}")
     rejects = parse_report(a.report, a.trace, a.session)
-    title = a.title if a.title is not None else f"{a.trace.split('/')[-1]}, session {a.session}"
+    title = a.title if a.title is not None else f"{os.path.basename(a.trace)}, session {a.session}"
     if a.mode == "overview":
-        svg = overview([o for o in ops if a.lo <= o.n <= a.hi], rejects, title)
+        ops = [o for o in ops if a.lo <= o.n <= a.hi]
+        if not ops:
+            sys.exit(f"no operations between {a.lo} and {a.hi}")
+        svg = overview(ops, rejects, title)
     else:
         lo, hi = a.lo, a.hi
         if a.around_reject:
@@ -446,7 +445,6 @@ def main():
     else:
         with open(a.output, "w") as f:
             f.write(svg)
-
 
 if __name__ == "__main__":
     main()

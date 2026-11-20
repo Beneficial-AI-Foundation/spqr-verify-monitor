@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Turn the printed result of a Veil `sat trace` query into the JSON of a model checker
-result, so that `panel.html` shows it.
+"""Turn the Lean output of a Veil `sat trace` query into the JSON of a model checker result,
+so that `panel.html` shows it.
 
 The states and actions are Veil's. The field `sent` prints as `<unrepresentable>` in trace
-queries and is left out. With `--rejected TEXT`, the panel shows TEXT as a violation after the
-last state: use it for the step that has no model, as found by `trace2veil.py search`.
+queries and is left out. With `--rejected TEXT`, the result is marked as a violation with the
+text TEXT: use it for the step that has no model, as found by `trace2veil.py search`.
 
-Usage: sat2panel.py QUERY.out [--rejected TEXT] > result.json
+Usage: python3 -I viz/veil/sat2panel.py QUERY.out [--rejected TEXT] > result.json
 """
 
 import argparse
@@ -72,13 +72,16 @@ def parse(text: str):
 
 
 def main():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("out")
-    ap.add_argument("--rejected")
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("out", help="Lean output of a satisfiable `sat trace` query (a .out file "
+                                "of trace2veil.py)")
+    ap.add_argument("--rejected", metavar="TEXT", help="mark the result as a violation")
     a = ap.parse_args()
     with open(a.out) as f:
         states = parse(f.read())
-    result = {"result": "found_violation" if a.rejected else "no_violation", "trace": {"theory": {"$veil": "record", "type": "Theory", "fields": []},
+    result = {"result": "found_violation" if a.rejected else "no_violation",
+              "trace": {"theory": {"$veil": "record", "type": "Theory", "fields": []},
                         "states": states}}
     if a.rejected:
         result["violation"] = {"kind": "safety_failure", "violates": [a.rejected]}

@@ -9,6 +9,7 @@ here=$(cd "$(dirname "$0")" && pwd)
 veil=$1
 out=$(realpath -m "$2")
 work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
 python3 -I - "$here/SpqrBraid.lean" "$work/mc.lean" <<'EOF'
 import sys
 m = open(sys.argv[1]).read()

@@ -427,7 +427,8 @@ action err_future (p : party) (k : kind) (r : erel) {
   lastKey := false
 }
 
-/- A chunk that completes `hdr || mac` or `ct2 || mac`, whose MAC does not match. -/
+/- A chunk that completes `hdr || mac` or `ct2 || mac`, whose MAC check fails in the code.
+Veil does not compare MAC values: the action needs only a `good` MAC observation. -/
 action err_mac (p : party) (k : kind) {
   let q := if p = pA then pB else pA
   require sent q k (ep p)

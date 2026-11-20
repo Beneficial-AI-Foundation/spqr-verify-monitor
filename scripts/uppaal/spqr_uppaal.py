@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UPPAAL model of the ML-KEM Braid and trace observers for SPQR monitor logs.
+"""Write an UPPAAL model of the ML-KEM Braid, and replay SPQR monitor traces against it.
 
 The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
 `receiveEq`) over abstract data:
@@ -10,54 +10,54 @@ The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
   NONE (no decoder or check), PART (decoder has no message yet),
   OK (decoder complete and the check passes), BAD (the check fails),
   MISS (the call the model needs is missing, or its input is not the
-  model's formula). The script computes the token from the trace.
+  model's input; see `--data`).
 
-Subcommands:
+This script computes the token of each step from the logged calls and bytes. UPPAAL sees
+only the token: a wrong MAC input or a MAC mismatch reaches the model as BAD or MISS.
+
+Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 
   model OUT.xml
       The free model: Alice, Bob and a network that can deliver any sent
-      message (loss, duplication, reordering). For the simulator.
+      message (loss, duplication, reordering), with EMAX = 3. For the simulator.
 
   trace TRACE.jsonl OUT.xml [--max-ops N] [--party A|B] [--drop-idle]
                             [--data control|calls|formula]
-      The model plus an observer that replays the trace step by step.
-      Location `step_k` of the observer means k steps matched.
+      The model plus an observer that replays the first session of the trace
+      step by step. Location `step_k` of the observer means k steps matched.
 
   check TRACE.jsonl [same options] [--workdir DIR]
-      Generate, run verifyta, print the largest matched k and the step
-      after it, and write the witness trace of the longest prefix.
+      Write the model of `trace`, run verifyta (path in $VERIFYTA), print the
+      largest matched k and the first unmatched step, and write the witness
+      trace of the longest matched prefix.
 """
 
 import argparse
-import json
+import math
 import os
 import re
 import subprocess
 import sys
 from xml.sax.saxutils import escape
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+from spqr_trace import (CT_LABEL, CT2_SIZE, HDR_LABEL, HDR_SIZE, KIND_ALIASES,  # noqa: E402
+                        KINDS, LABELS, STEP_FUNCS, mac_input, operations, short_label)
+
 VERIFYTA = os.environ.get("VERIFYTA", "/opt/uppaal/lib/app/bin/verifyta.sh")
 
 EMAX = 8
 
-LABELS = ["KeysUnsampled", "KeysSampled", "HeaderSent", "Ct1Received",
-          "EkSentCt1Received", "NoHeaderReceived", "HeaderReceived",
-          "Ct1Sampled", "EkReceivedCt1Sampled", "Ct1Acknowledged", "Ct2Sampled"]
-SHORT = ["KU", "KS", "HS", "C1R", "ESC1R", "NHR", "HR", "C1S", "ERC1S", "C1A", "C2S"]
-LAB = {n: i for i, n in enumerate(LABELS)}
+SHORT = [short_label(name) for name in LABELS]   # KU, KS, ..., C2S
+LAB = {name: i for i, name in enumerate(LABELS)}
 
-KINDS = ["none", "hdr", "ek", "ekct1ack", "ct1ack", "ct1", "ct2"]
 KIND = {k: i for i, k in enumerate(KINDS)}
-KIND["ct1ackfalse"] = KIND["none"]
+KIND.update({k: KIND[v] for k, v in KIND_ALIASES.items()})
 
 T_NONE, T_PART, T_OK, T_BAD, T_MISS = range(5)
 TOK_NAMES = ["T_NONE", "T_PART", "T_OK", "T_BAD", "T_MISS"]
 SEND, RECV, RECV_ERR = range(3)
 DIR_NAMES = ["SEND", "RECV", "RECV_ERR"]
-
-PROTOCOL_INFO = b"Signal_PQCKA_V1_MLKEM768"
-CT2_SIZE = 128
-HDR_SIZE = 64
 
 # --------------------------------------------------------------------------
 # Model
@@ -74,7 +74,7 @@ const int EMAX = {EMAX};
 typedef int[0, EMAX + 1] epoch_t;
 
 // states (Label)
-{chr(10).join(f"const int {s} = {i};  // {l}" for i, (s, l) in enumerate(zip(SHORT, LABELS)))}
+{chr(10).join(f"const int {s} = {i};  // {name}" for i, (s, name) in enumerate(zip(SHORT, LABELS)))}
 // receive outcomes besides a target state
 const int STAY = -1;     // state unchanged
 const int FAIL = -2;     // Receive() returns none
@@ -262,10 +262,10 @@ void move(int l, int k, int inc) {
 
 def party_template():
     locs = []
-    for s in SHORT:
+    for s, name in zip(SHORT, LABELS):
         x, y = POS[s]
         locs.append(f'<location id="{s}" x="{x}" y="{y}"><name x="{x + 12}" y="{y - 30}">'
-                    f'{LABELS[SHORT.index(s)]}</name></location>')
+                    f'{name}</name></location>')
     trans = []
     for s in SHORT:
         x, y = POS[s]
@@ -320,7 +320,6 @@ def party_template():
 def net_template():
     """Idle stores sends; a delivery goes through a committed location named after the
     kind, so the MSC shows what is delivered."""
-    import math
     parts = []
     for i, k in enumerate(KINDS):
         chan = "none_" if k == "none" else k
@@ -375,30 +374,13 @@ def free_model():
 # Trace reading
 
 
-def read_events(path):
-    evs = []
-    with open(path) as f:
-        for n, line in enumerate(f, 1):
-            if line.strip():
-                e = json.loads(line)
-                e["line"] = n
-                evs.append(e)
-    return evs
-
-
 def hexb(s):
     return bytes.fromhex(s)
 
 
-def be8(n):
-    return n.to_bytes(8, "big")
-
-
-def mac_data(label, epoch, body):
-    return PROTOCOL_INFO + label + be8(epoch) + body
-
-
 class Step:
+    """One step of the trace, as the observer checks it."""
+
     def __init__(self, op, party, d, kind, mep, tok, label, epoch, key, line, pre):
         self.op, self.party, self.dir, self.kind, self.mep = op, party, d, kind, mep
         self.tok, self.label, self.epoch, self.key, self.line, self.pre = (
@@ -413,23 +395,18 @@ class Step:
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
-def steps_of(evs, max_ops, data):
-    """The step events of session 1, with the data token of each."""
-    s1 = [e for e in evs if e["s"] == evs[0]["s"]]
+def steps_of(path, max_ops, data):
+    """The steps of the first session in the trace at `path`, with the data token of each."""
     ct1_recv = {0: None, 1: None}   # ct1 a party decoded at (3)
     ct1_own = {0: None, 1: None}    # ct1 a party sampled at (7)
-    ops = {}
-    for e in s1:
-        if max_ops is not None and e["op"] > max_ops:
-            continue
-        ops.setdefault((e["op"], e["p"]), []).append(e)
     out = []
-    for (op, pname), es in sorted(ops.items()):
-        if op == 0:
-            continue
-        p = 0 if pname == "A" else 1
+    for es in operations(path):
+        op = es[0]["op"]
+        if max_ops is not None and op > max_ops:
+            break   # operations come in increasing order within a session
+        p = 0 if es[0]["p"] == "A" else 1
         st = es[-1]
-        if not st["f"].startswith("States::"):
+        if st["f"] not in STEP_FUNCS:
             raise SystemExit(f"op {op}: last event is {st['f']}, not a step")
         pre = (LAB[st["args"][0]], st["args"][1])
         r = st["ret"]
@@ -450,7 +427,7 @@ def steps_of(evs, max_ops, data):
                 if not hmacs:
                     return T_MISS
                 return T_OK if code_ok else T_BAD
-            want = mac_data(label, epoch, body)
+            want = mac_input(label, epoch, body)
             hit = [h for h in hmacs if hexb(h["args"][1]) == want]
             if not hit:
                 return T_MISS
@@ -465,7 +442,7 @@ def steps_of(evs, max_ops, data):
             tok = T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else b""
-                tok = mac_tok(b":ekheader", pre[1], hdr, None, True)
+                tok = mac_tok(HDR_LABEL, pre[1], hdr, None, True)
             key = r["key"]["epoch"] if r.get("key") else 0
             out.append(Step(op, p, SEND, KIND[m["kind"]], m["epoch"], tok, LAB[r["state"]],
                             r["epoch"], key, st["line"], pre))
@@ -474,9 +451,9 @@ def steps_of(evs, max_ops, data):
         k = KIND[m["kind"]]
         ok = "err" not in r
         tok = T_NONE
-        l, e = pre
-        if m["epoch"] == e and l != LAB["Ct2Sampled"]:
-            dec_case = (l, k) in {
+        lab, e = pre
+        if m["epoch"] == e and lab != LAB["Ct2Sampled"]:
+            dec_case = (lab, k) in {
                 (LAB["HeaderSent"], KIND["ct1"]), (LAB["EkSentCt1Received"], KIND["ct2"]),
                 (LAB["NoHeaderReceived"], KIND["hdr"]), (LAB["Ct1Sampled"], KIND["ek"]),
                 (LAB["Ct1Sampled"], KIND["ekct1ack"]), (LAB["Ct1Acknowledged"], KIND["ek"]),
@@ -488,14 +465,14 @@ def steps_of(evs, max_ops, data):
                     tok = T_PART
                 else:
                     msg = hexb(decoded[0]["ret"])
-                    if l == LAB["HeaderSent"]:
+                    if lab == LAB["HeaderSent"]:
                         ct1_recv[p] = msg
                         tok = T_OK
-                    elif l == LAB["EkSentCt1Received"]:
-                        tok = mac_tok(b":ciphertext", e, (ct1_recv[p] or b"") + msg[:CT2_SIZE],
+                    elif lab == LAB["EkSentCt1Received"]:
+                        tok = mac_tok(CT_LABEL, e, (ct1_recv[p] or b"") + msg[:CT2_SIZE],
                                       msg[CT2_SIZE:], ok)
-                    elif l == LAB["NoHeaderReceived"]:
-                        tok = mac_tok(b":ekheader", e, msg[:HDR_SIZE], msg[HDR_SIZE:], ok)
+                    elif lab == LAB["NoHeaderReceived"]:
+                        tok = mac_tok(HDR_LABEL, e, msg[:HDR_SIZE], msg[HDR_SIZE:], ok)
                     else:
                         if data == "control":
                             ek_ok = ok
@@ -507,14 +484,14 @@ def steps_of(evs, max_ops, data):
                             tok = T_MISS
                         elif not ek_ok:
                             tok = T_BAD
-                        elif l == LAB["Ct1Sampled"] and k == KIND["ek"]:
+                        elif lab == LAB["Ct1Sampled"] and k == KIND["ek"]:
                             tok = T_OK                                       # (10)
                         else:                                                # (9), (11)
                             ct2 = hexb(enc2[0]["ret"]) if enc2 else b""
-                            tok = mac_tok(b":ciphertext", e, (ct1_own[p] or b"") + ct2, None, ok)
-            elif l == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
+                            tok = mac_tok(CT_LABEL, e, (ct1_own[p] or b"") + ct2, None, ok)
+            elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
                 ct2 = hexb(enc2[0]["ret"]) if enc2 else b""                  # (12)
-                tok = mac_tok(b":ciphertext", e, (ct1_own[p] or b"") + ct2, None, ok)
+                tok = mac_tok(CT_LABEL, e, (ct1_own[p] or b"") + ct2, None, ok)
         if ok:
             key = r["key"]["epoch"] if r.get("key") else 0
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,
@@ -578,8 +555,7 @@ def trace_model(steps, party):
 
 
 def build(args):
-    evs = read_events(args.trace)
-    steps = steps_of(evs, args.max_ops, args.data)
+    steps = steps_of(args.trace, args.max_ops, args.data)
     if args.party:
         p = 0 if args.party == "A" else 1
         steps = [s for s in steps if s.party == p]
@@ -603,19 +579,26 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    m = sub.add_parser("model")
-    m.add_argument("out")
-    for name in ("trace", "check"):
-        t = sub.add_parser(name)
-        t.add_argument("trace")
+    m = sub.add_parser("model", help="write the free model")
+    m.add_argument("out", help="UPPAAL XML file to write")
+    for name, text in (("trace", "write the model with a trace observer"),
+                       ("check", "write the model with a trace observer and run verifyta")):
+        t = sub.add_parser(name, help=text)
+        t.add_argument("trace", help="JSONL trace of the cargo feature `monitor`")
         if name == "trace":
-            t.add_argument("out")
+            t.add_argument("out", help="UPPAAL XML file to write")
         else:
-            t.add_argument("--workdir", default="/tmp/uppaal-spike")
-        t.add_argument("--max-ops", type=int)
-        t.add_argument("--party", choices=["A", "B"])
-        t.add_argument("--drop-idle", action="store_true")
-        t.add_argument("--data", choices=["control", "calls", "formula"], default="formula")
+            t.add_argument("--workdir", default="/tmp/uppaal-spike",
+                           help="where to write the model and the witness "
+                                "(default /tmp/uppaal-spike)")
+        t.add_argument("--max-ops", type=int, metavar="N", help="replay only operations 1 to N")
+        t.add_argument("--party", choices=["A", "B"],
+                       help="replay only this party's steps, and do not check delivery")
+        t.add_argument("--drop-idle", action="store_true",
+                       help="drop the steps that send or receive `none` and leave the state "
+                            "unchanged")
+        t.add_argument("--data", choices=["control", "calls", "formula"], default="formula",
+                       help="how to compute the MAC and `ek` tokens (default formula)")
     a = ap.parse_args()
     if a.cmd == "model":
         global EMAX

@@ -48,6 +48,8 @@ name = "Tests"
 [[lean_lib]]
 name = "Monitor"
 roots = ["Monitor.Main"]
+# `roots` alone does not make `Monitor.Check` and the other modules part of the library.
+globs = ["Monitor.+"]
 
 [[lean_exe]]
 name = "spqr-monitor"

@@ -47,6 +47,7 @@ name = "Tests"
 # `BraidModel`.
 [[lean_lib]]
 name = "Monitor"
+roots = ["Monitor.Main"]
 
 [[lean_exe]]
 name = "spqr-monitor"

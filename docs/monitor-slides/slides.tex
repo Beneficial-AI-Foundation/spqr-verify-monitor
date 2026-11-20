@@ -19,7 +19,6 @@
 % ---------------------------------------------------------------------------------------------
 \begin{frame}[t]{Why a monitor, when we have \code{run\_refines}?}
   \footnotesize
-  \vspace{0.2em}
   \begin{itemize}\footnotesize
     \item \code{run\_refines} proves that every run of the \emph{extracted} Lean code refines
       \code{BraidModel}. It trusts the Aeneas translation, the translation patches and the
@@ -28,17 +27,20 @@
       that the tests execute. It needs no new extraction.
     \item So it sees what the proof cannot see:
       \begin{itemize}\footnotesize
-        \item code that changed after the last extraction;
-        \item how the code calls HMAC, HKDF and ML-KEM: with which keys, labels and bytes;
-        \item a primitive call that the model needs and that the code left out.
+        \item \textbf{opaque and external functions}: ML-KEM is a hand-written FIPS 203 model,
+          HMAC and HKDF are opaque. The monitor uses what the real code returned, and the keys,
+          labels and bytes the code passed in;
+        \item code patched or left out for extraction: 26 patches, and the SIMD field
+          multiplication that runs on CPUs with \code{pclmulqdq};
+        \item a primitive call that the model needs and that the code left out, and code that
+          changed after the last extraction.
       \end{itemize}
   \end{itemize}
-  \vspace{0.2em}
   \centering
   \begin{tikzpicture}[every node/.append style={font=\scriptsize}]
     \node[spec, minimum width=3.0cm] (model) at (0, 0) {\code{BraidModel} (Lean)};
-    \node[impl, minimum width=3.4cm] (ext) at (8, 1.0) {extracted code (Aeneas)};
-    \node[impl, minimum width=3.4cm] (bin) at (8, -1.0) {compiled Rust, run by the tests};
+    \node[impl, minimum width=3.4cm] (ext) at (8, 0.6) {extracted code (Aeneas)};
+    \node[impl, minimum width=3.4cm] (bin) at (8, -0.6) {compiled Rust, run by the tests};
     \draw[proved] (model.east) -- node[pos=0.45, above, sloped, label, text=proofc] {\code{run\_refines}: every run}
       (ext.west);
     \draw[very thick, gapc, dashed] (model.east) -- node[pos=0.45, below, sloped, label, text=gapc]

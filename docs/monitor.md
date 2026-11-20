@@ -6,6 +6,13 @@ instrumented Rust tests write an event log. A Lean program replays each party's 
 extracted code. This document lists the results, what each result means, and how to reproduce
 it.
 
+The monitor checks what the proofs cannot reach. `run_refines` is a theorem about the Lean
+translation, not about the binary. Aeneas translates only part of the program. The ML-KEM, HMAC
+and HKDF calls are hand-written Lean models or opaque functions, the Rust is patched before
+extraction, and the binary depends on the compiler and on code that is not translated. The
+monitor takes each primitive value from the binary that runs, so it tests these assumptions on
+real executions. Section 2 lists them.
+
 ## 1. Results
 
 | # | Result | Evidence |
@@ -51,6 +58,36 @@ The proofs have no `sorry`. The following parts are trusted, not proved:
   when both parties log a key for an epoch, the keys are equal; an epoch with a key from one
   party only is listed as incomplete, not as a failure), and randomness reuse (no two `mlkem.generate` or `mlkem.encaps1`
   calls of a session get the same randomness).
+
+### What the monitor checks that the proofs do not
+
+`run_refines` says that every run of the extracted code is a `BraidModel` run, for every `P`
+with `CodeAgrees P`. `CodeAgrees` relates `P` to the Lean translation of the code. That
+translation differs from the binary in these places:
+
+- `SrcTranslated/FunsExternal.lean` replaces the external functions with Lean written by hand.
+  ML-KEM is a model of FIPS 203, not a translation of libcrux. HMAC
+  (`libcrux_hmac.hmac`) is `opaque`, with an axiom for its output size.
+- The `opaque` list in `Cargo.toml` keeps `spqr::kdf::hkdf_to_slice` and the state encoding
+  without a body. The `exclude` list drops the `log` crate, the prost code and the SIMD field
+  multiplication `spqr::encoding::gf::accelerated`.
+- `translation-patches/` changes 26 Rust functions before extraction. For example,
+  `gf-mul2_u16.patch` removes the SIMD branch. On a CPU with `pclmulqdq` or `aes` (aarch64),
+  the binary runs that branch, and the Lean code never sees it.
+- The Rust compiler, the standard library and libcrux itself are trusted.
+
+The monitor reads the keys, ciphertexts, chunks and MACs that the binary computed. On each
+executed run it checks three things that the proofs assume or cannot see:
+
+- One `P` explains all logged calls. So each external function returned the same output for
+  the same input, as the Lean models assume when they make it a function.
+- The protocol code, running on the real outputs, takes the steps that `BraidModel` takes. A
+  patch or an untranslated branch that changes the control flow shows up as a rejected step.
+- The two parties derive equal keys. A wrong ML-KEM result, or a SIMD product that corrupts a
+  decoded message, gives different keys if both parties log a key for that epoch.
+
+The monitor does not check that a primitive meets its specification, for example that libcrux
+computes FIPS 203. It checks only the executed steps, and only values that reach a logged call.
 
 Scope: the monitor observes the chunked `States` machine as the orchestrator tests drive it
 (`src/test/v1_impls.rs`). It does not observe the public API in `src/lib.rs`, the `chain.rs`

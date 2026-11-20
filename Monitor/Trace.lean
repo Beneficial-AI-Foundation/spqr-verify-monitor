@@ -10,8 +10,8 @@ import Monitor.Tables
 
 The Rust feature `monitor` (`src/monitor.rs`) writes one JSON object per line:
 `{"s":session,"p":party,"op":operation,"f":function,"args":[..],"ret":..}`, with bytes as
-lowercase hex. This module parses the lines into `Event`s and the step events into
-observations (`BraidModel.Obs`). -/
+lowercase hex. This module parses the lines into `Event`s, and the step events (`States::send`,
+`States::recv`) into observations (`BraidModel.Obs`). -/
 
 open Lean Aeneas Aeneas.Std BraidModel
 
@@ -51,6 +51,12 @@ def jBytes (j : Json) : Except String Bytes := do decodeHex (← j.getStr?)
 /-- A natural number in JSON. -/
 def jNat (j : Json) : Except String Nat := j.getNat?
 
+/-- The `i`-th byte string of a JSON argument array. -/
+def argBytes (a : Array Json) (i : Nat) : Except String Bytes := do
+  match a[i]? with
+  | some j => jBytes j
+  | none => throw s!"missing argument {i}"
+
 /-- The `i`-th element of an argument array. -/
 def arg (a : Array Json) (i : Nat) : Except String Json :=
   match a[i]? with
@@ -65,9 +71,9 @@ def parseEvent (line : Nat) (s : String) : Except String Event := do
     | _ => throw "args is not an array"
   return {
     line
-    session := ← (← j.getObjVal? "s").getNat?
+    session := ← jNat (← j.getObjVal? "s")
     party := ← (← j.getObjVal? "p").getStr?
-    op := ← (← j.getObjVal? "op").getNat?
+    op := ← jNat (← j.getObjVal? "op")
     f := ← (← j.getObjVal? "f").getStr?
     args
     ret := ← j.getObjVal? "ret" }
@@ -87,6 +93,9 @@ def parseLabel (s : String) : Except String Label :=
   | "Ct1Acknowledged" => .ok .ct1Acknowledged
   | "Ct2Sampled" => .ok .ct2Sampled
   | _ => .error s!"unknown state {s}"
+
+/-- The name of a state, from a JSON string. -/
+def jLabel (j : Json) : Except String Label := do parseLabel (← j.getStr?)
 
 /-- A chunk `{index, data}`. -/
 def parseChunk (j : Json) : Except String MChunk := do
@@ -113,21 +122,27 @@ def parseKey (j : Json) : Except String (Option Key) := do
   if j.isNull then return none
   return some (← jNat (← j.getObjVal? "epoch"), ← jBytes (← j.getObjVal? "secret"))
 
+/-- The key, state name and epoch of a successful step result `{key, state, epoch, ...}`. -/
+def parseResult (ret : Json) : Except String (Option Key × Label × Nat) := do
+  return (← parseKey (← ret.getObjVal? "key"), ← jLabel (← ret.getObjVal? "state"),
+    ← jNat (← ret.getObjVal? "epoch"))
+
 /-- The observation of a step event, with the randomness `r` of its operation. -/
 def parseObs (e : Event) (r : Bytes) : Except String (Obs MChunk) := do
   match e.f with
   | "States::send" =>
     if (e.ret.getObjVal? "err").isOk then throw "States::send returned an error"
-    return .send r (← parseMsg (← e.ret.getObjVal? "msg")) (← parseKey (← e.ret.getObjVal? "key"))
-      (← parseLabel (← (← e.ret.getObjVal? "state").getStr?)) (← jNat (← e.ret.getObjVal? "epoch"))
+    let m ← parseMsg (← e.ret.getObjVal? "msg")
+    let (k, l, ep) ← parseResult e.ret
+    return .send r m k l ep
   | "States::recv" =>
     let m ← parseMsg (← arg e.args 2)
     if (e.ret.getObjVal? "err").isOk then return .recvErr m
-    return .recvOk m (← parseKey (← e.ret.getObjVal? "key"))
-      (← parseLabel (← (← e.ret.getObjVal? "state").getStr?)) (← jNat (← e.ret.getObjVal? "epoch"))
+    let (k, l, ep) ← parseResult e.ret
+    return .recvOk m k l ep
   | f => throw s!"{f} is not a step event"
 
-/-- Whether an event ends an operation. -/
+/-- Whether an event is a step event (`States::send` or `States::recv`). -/
 def Event.isStep (e : Event) : Bool := e.f == "States::send" || e.f == "States::recv"
 
 end Monitor

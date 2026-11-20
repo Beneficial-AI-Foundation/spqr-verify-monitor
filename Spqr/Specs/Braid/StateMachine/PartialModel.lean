@@ -9,15 +9,15 @@ public import Spqr.Specs.Braid.StateMachine.Model
 
 /-! # The ML-KEM Braid machine over partially known primitives
 
-A runtime monitor knows the cryptographic primitives only at the arguments where it saw the code
-call them. `OPrims` holds such partial primitives: each primitive that the monitor learns from
-calls returns `none` where no call was seen. `sendO`, `receiveO`, `initAliceO` and `initBobO`
-are `send`, `receive`, `initAlice` and `initBob` of `Model.lean` computed over `OPrims`; they
-return `none` when the step needs a value that the partial primitives do not have.
+A runtime monitor knows the primitives only at the arguments where it saw the code call them.
+`OPrims` holds such partial primitives: a primitive learned from calls returns `none` where no
+call was seen. `sendO`, `receiveO`, `initAliceO` and `initBobO` compute `send`, `receive`,
+`initAlice` and `initBob` of `Model.lean` over `OPrims`, and return `none` when the step needs a
+value that the partial primitives do not have.
 
-`Agrees P Q` says that the total primitives `P` extend the partial primitives `Q`. The
-`_sound` theorems say that when the partial computation succeeds, every `P` that extends `Q`
-gives the same result.
+`Agrees P Q` states that the total primitives `P` extend the partial primitives `Q`. Each
+`_sound` theorem states that a result of the partial computation is the result of the total
+computation under every `P` that extends `Q`.
 
 **Source**: ML-KEM Braid Rev. 1, §1.2, §2.2–§2.6 -/
 
@@ -27,9 +27,8 @@ open Aeneas Aeneas.Std
 
 namespace BraidModel
 
-/-- Primitives known only at some arguments. The fields are those of `Prims`. The erasure
-code's `nextChunk` and `message`, the KEM, `ekMatches`, `MAC`, `KDF_AUTH` and `KDF_OK` return
-`none` at an argument where the value is not known. -/
+/-- The primitives of `Prims`, where `nextChunk`, `message`, the KEM, `ekMatches`, `MAC`,
+`KDF_AUTH` and `KDF_OK` return `none` at an argument where the value is not known. -/
 structure OPrims (Enc Dec Chunk : Type) where
   /-- `Encode(byte_array) → encoder` -/
   encode : Bytes → Enc
@@ -74,8 +73,8 @@ structure OPrims (Enc Dec Chunk : Type) where
 
 variable {Enc Dec Chunk : Type}
 
-/-- `P` extends `Q`: the total fields are equal, and wherever a field of `Q` returns `some v`,
-the field of `P` returns `v`. -/
+/-- `P` extends `Q`: the fields that are total in `Q` are equal, and wherever a field of `Q`
+returns `some v`, the field of `P` returns `v`. -/
 structure Agrees (P : Prims Enc Dec Chunk) (Q : OPrims Enc Dec Chunk) : Prop where
   encode : P.encode = Q.encode
   nextChunk : ∀ x v, Q.nextChunk x = some v → P.nextChunk x = v
@@ -162,9 +161,10 @@ def sendO (Q : OPrims Enc Dec Chunk) (σ : State Enc Dec) (r : Bytes) :
     let ce ← Q.nextChunk enc
     pure (.ct2Sampled e a ce.2, ⟨e, .ct2 ce.1⟩, none)
 
-/-- The `ek` branches of transitions (9) and (11) over `OPrims`: from the decoder `d'` that has
-the new chunk, stay in `stay d'` while there is no message, and go to `Ct2Sampled` when the
-message matches the header. -/
+/-- The arms of `receiveEq` over `OPrims` that add an `ek` chunk in `Ct1Sampled` or
+`Ct1Acknowledged` and then may reach `Ct2Sampled` (transitions (8), (9) and (11)). With the
+decoder `d'` that has the new chunk: no message gives `stay d'`; a message `ek` that matches the
+header gives `Ct2Sampled`; any other message is the model's failure. -/
 def ekDoneO (Q : OPrims Enc Dec Chunk) (e : Nat) (a : Auth) (hdr es ct1 : Bytes) (d' : Dec)
     (stay : Dec → State Enc Dec) : Option (Option (State Enc Dec × Option Key)) := do
   let msg ← Q.message d'
@@ -177,7 +177,7 @@ def ekDoneO (Q : OPrims Enc Dec Chunk) (e : Nat) (a : Auth) (hdr es ct1 : Bytes)
       pure (some (.ct2Sampled e a enc, none))
     else pure none
 
-/-- `receiveEq` over `OPrims`. The outer `none` means a needed value is unknown; the inner
+/-- `receiveEq` over `OPrims`. The outer `none` means that a needed value is unknown; the inner
 `none` is the model's failure. -/
 def receiveEqO (Q : OPrims Enc Dec Chunk) : State Enc Dec → Payload Chunk →
     Option (Option (State Enc Dec × Option Key))
@@ -225,21 +225,17 @@ def receiveEqO (Q : OPrims Enc Dec Chunk) : State Enc Dec → Payload Chunk →
       let ok ← Q.ekMatches hdr ek
       if ok then pure (some (.ekReceivedCt1Sampled e a es ct1 hdr ek enc, none))
       else pure none
-  | .ct1Sampled e a hdr es ct1 _ d, .ekCt1Ack c =>
+  | .ct1Sampled e a hdr es ct1 _ d, .ekCt1Ack c
+  | .ct1Acknowledged e a hdr es ct1 d, .ekCt1Ack c
+  | .ct1Acknowledged e a hdr es ct1 d, .ek c =>
     ekDoneO Q e a hdr es ct1 (Q.addChunk d c) (.ct1Acknowledged e a hdr es ct1)
-  | .ekReceivedCt1Sampled e a es ct1 hdr ek _, .ekCt1Ack _ => do
-    let enc ← ct2EncoderO Q e a es ct1 hdr ek
-    pure (some (.ct2Sampled e a enc, none))
+  | .ekReceivedCt1Sampled e a es ct1 hdr ek _, .ekCt1Ack _
   | .ekReceivedCt1Sampled e a es ct1 hdr ek _, .ct1Ack => do
     let enc ← ct2EncoderO Q e a es ct1 hdr ek
     pure (some (.ct2Sampled e a enc, none))
-  | .ct1Acknowledged e a hdr es ct1 d, .ekCt1Ack c =>
-    ekDoneO Q e a hdr es ct1 (Q.addChunk d c) (.ct1Acknowledged e a hdr es ct1)
-  | .ct1Acknowledged e a hdr es ct1 d, .ek c =>
-    ekDoneO Q e a hdr es ct1 (Q.addChunk d c) (.ct1Acknowledged e a hdr es ct1)
   | σ, _ => pure (some (σ, none))
 
-/-- `receive` over `OPrims`. -/
+/-- `receive` over `OPrims`, with the outer and inner `none` of `receiveEqO`. -/
 def receiveO (Q : OPrims Enc Dec Chunk) (σ : State Enc Dec) (m : Msg Chunk) :
     Option (Option (State Enc Dec × Option Key)) :=
   match σ with
@@ -323,8 +319,8 @@ theorem sendO_sound (hA : Agrees P Q) {σ : State Enc Dec} {r : Bytes}
     | (subst h; rfl)
     | (obtain ⟨⟨c, enc⟩, hce, rfl⟩ := h; simp only [send, hA.nextChunk _ _ hce])
 
-/-- If `ekDoneO` returns `x`, then every `P` that extends `Q` gives `x` in the `ek` branches of
-transitions (9) and (11) of `receiveEq`. -/
+/-- If `ekDoneO Q e a hdr es ct1 d' stay` returns `x`, then for every `P` that extends `Q`, the
+same computation over `P`, as in the corresponding arms of `receiveEq P`, gives `x`. -/
 theorem ekDoneO_sound (hA : Agrees P Q) {e : Nat} {a : Auth} {hdr es ct1 : Bytes} {d' : Dec}
     {stay : Dec → State Enc Dec} {x : Option (State Enc Dec × Option Key)}
     (h : ekDoneO Q e a hdr es ct1 d' stay = some x) :
@@ -400,14 +396,9 @@ theorem receiveEqO_sound (hA : Agrees P Q) {σ : State Enc Dec} {p : Payload Chu
       simp only [hA.ekMatches _ _ _ hok]
       cases ok <;> simpa only [Bool.false_eq_true, ↓reduceIte, Option.pure_def,
         Option.some.injEq] using h
-  case ct1Sampled.ekCt1Ack => exact ekDoneO_sound hA h
-  case ct1Acknowledged.ekCt1Ack => exact ekDoneO_sound hA h
-  case ct1Acknowledged.ek => exact ekDoneO_sound hA h
-  case ekReceivedCt1Sampled.ekCt1Ack =>
-    simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at h
-    obtain ⟨enc, henc, rfl⟩ := h
-    rw [ct2EncoderO_sound hA henc]
-  case ekReceivedCt1Sampled.ct1Ack =>
+  case ct1Sampled.ekCt1Ack | ct1Acknowledged.ekCt1Ack | ct1Acknowledged.ek =>
+    exact ekDoneO_sound hA h
+  case ekReceivedCt1Sampled.ekCt1Ack | ekReceivedCt1Sampled.ct1Ack =>
     simp only [Option.bind_eq_bind, Option.bind_eq_some_iff, Option.some.injEq] at h
     obtain ⟨enc, henc, rfl⟩ := h
     rw [ct2EncoderO_sound hA henc]

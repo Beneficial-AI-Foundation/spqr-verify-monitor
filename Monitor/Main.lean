@@ -13,8 +13,8 @@ For each file and each session in it, the program checks both parties (`Monitor.
 and the session-level properties (`Monitor.sessionChecks`), and prints one line per party and
 per check. With `--max-ops N` it checks only the events up to the `N`-th operation of each
 session, and says so: that is partial coverage of the file. The exit code is 0 when every
-check of every file passes, 3 when every check passes on a prefix (`--max-ops`), and 1
-otherwise. -/
+check of every file passes, 3 when every check passes on a prefix (`--max-ops`), 1 when a check
+fails, and 2 on a usage error. -/
 
 open Lean Std Monitor
 
@@ -40,14 +40,22 @@ def report (s : Nat) (what : String) (r : Except String Unit) : IO Bool := do
 /-- Check one file; return whether every check passed. -/
 def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
   let evs ← readEvents path
-  let sessions := (evs.map (·.session)).toList.eraseDups
+  -- the events of each session, sessions in order of their first event
+  let mut index : HashMap Nat Nat := {}
+  let mut sessions : Array (Nat × Array Event) := #[]
+  for e in evs do
+    match index[e.session]? with
+    | some i => sessions := sessions.modify i fun (s, a) => (s, a.push e)
+    | none =>
+      index := index.insert e.session sessions.size
+      sessions := sessions.push (e.session, #[e])
   let mut ok := true
-  IO.println s!"{path}: {evs.size} events, {sessions.length} session(s)"
+  IO.println s!"{path}: {evs.size} events, {sessions.size} session(s)"
   if sessions.isEmpty then
     IO.println "  REJECTED: no events"
     return false
-  for s in sessions do
-    let mut sevs := evs.filter (·.session == s)
+  for (s, sevs₀) in sessions do
+    let mut sevs := sevs₀
     if let some n := maxOps then
       let cut := sevs.filter (·.op ≤ n)
       if cut.size < sevs.size then
@@ -79,8 +87,9 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
             parties {p} and {e.party}"
           break
       | none => owner := owner.insert e.op e.party
-    for p in ["A", "B"] do
-      let pevs := sevs.filter (·.party == p)
+    let evA := sevs.filter (·.party == "A")
+    let evB := sevs.filter (·.party == "B")
+    for (p, pevs) in [("A", evA), ("B", evB)] do
       if pevs.isEmpty then
         ok := false
         IO.println s!"  session {s} party {p}: REJECTED: no events for this party"
@@ -94,7 +103,7 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
         ok := false
         IO.println s!"  session {s} party {p}: REJECTED: {err}"
     -- key agreement uses the keys the code logged, so it also holds for a rejected party
-    let c := sessionChecks sevs (loggedKeys sevs "A") (loggedKeys sevs "B")
+    let c := sessionChecks sevs (loggedKeys evA) (loggedKeys evB)
     ok := (← report s "delivery" c.delivery) && ok
     ok := (← report s "key agreement" c.keys) && ok
     if !c.incompleteEpochs.isEmpty then
@@ -103,6 +112,7 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
     ok := (← report s "randomness reuse (outside BraidModel)" c.randomness) && ok
   return ok
 
+/-- Check the files given on the command line; see the module docstring for the exit code. -/
 def main (args : List String) : IO UInt32 := do
   let rec parse : List String → Option Nat → List String → Except String (Option Nat × List String)
     | [], m, fs => .ok (m, fs.reverse)

@@ -10,10 +10,12 @@ import Std.Data.HashMap
 
 The partial primitives `Tables.prims` that the monitor replays with. The erasure code is
 represented by its inputs: an encoder is its message and the number of chunks it emitted, a
-decoder is its size and the chunks added to it. Systematic chunks are computed; parity chunks,
-decoder results and the cryptographic primitives come from tables of logged calls.
-`kdfAuth` and `kdfOk` look up the logged HKDF calls at the salt, key and info that
-`CodeAgrees.kdfAuth` and `CodeAgrees.kdfOk` (`Relation.lean`) fix. -/
+decoder is its size and the chunks added to it. Systematic chunks are computed. Parity chunks,
+decoder results and the cryptographic primitives are looked up in tables: the monitor fills
+them from the logged calls and, for parity chunks, from the sent messages. `kdfAuth` and `kdfOk`
+look up the logged HKDF calls at the salt, key and info that `CodeAgrees.kdfAuth` and
+`CodeAgrees.kdfOk` (`Relation.lean`) fix. The code's `encaps2` takes no header, so `encaps2`
+ignores its header argument. -/
 
 open Aeneas Aeneas.Std BraidModel
 
@@ -21,7 +23,7 @@ namespace Monitor
 
 instance : Hashable Std.U8 := ⟨fun x => hash x.val⟩
 
-/-- A codeword chunk: its index and its 32 data bytes. -/
+/-- A codeword chunk: its index and its data bytes. -/
 structure MChunk where
   index : Nat
   data : Bytes
@@ -32,6 +34,14 @@ abbrev MEnc := Bytes × Nat
 
 /-- A decoder: its message size in bytes and the chunks added to it, in order. -/
 abbrev MDec := Nat × List MChunk
+
+/-- Add a chunk to a decoder. -/
+def MDec.addChunk (d : MDec) (c : MChunk) : MDec := (d.1, d.2 ++ [c])
+
+/-- The chunk of a payload, if it has one. -/
+def chunkOf : Payload MChunk → Option MChunk
+  | .hdr c | .ek c | .ekCt1Ack c | .ct1 c | .ct2 c => some c
+  | .none | .ct1Ack => none
 
 /-- The byte of a natural number below 256. -/
 def byte (n : Nat) : Std.U8 := ⟨BitVec.ofNat 8 n⟩
@@ -55,8 +65,7 @@ def zeroSalt : Bytes := List.replicate 32 (byte 0)
 def systematicChunk (m : Bytes) (i : Nat) : MChunk := ⟨i, (m.drop (32 * i)).take 32⟩
 
 open Std in
-/-- Tables of logged calls, keyed by the arguments: one per operation of a party, plus one for
-all operations of the party (to check that each primitive is a function). -/
+/-- Primitive values keyed by their arguments. -/
 structure Tables where
   /-- `hkdf(salt, ikm, info, len)` -/
   hkdf : HashMap (Bytes × Bytes × Bytes × Nat) Bytes := {}
@@ -86,7 +95,7 @@ def Tables.prims (T : Tables) : OPrims MEnc MDec MChunk where
       else T.parity[enc]?
     c.map fun c => (c, (enc.1, enc.2 + 1))
   decoderNew n := (n, [])
-  addChunk d c := (d.1, d.2 ++ [c])
+  addChunk := MDec.addChunk
   message d := T.message[d]?
   keyGen r := T.keyGen[r]?
   encaps1 hdr r := T.encaps1[(hdr, r)]?

@@ -1,7 +1,7 @@
 # Runtime monitor for SPQR: plan
 
 Status: final plan (draft 4), 2026-11-19. Codex review rounds 1–3 in `docs/monitor-plan-reviews.md`; round 3 found no HIGH or MEDIUM issue.
-Branch `claude/spqr-monitor-7f2bcf` (the monitor branch). Local document, never committed.
+Branch `claude/spqr-monitor-7f2bcf` (the monitor branch). Historical plan; the results and how to reproduce them are in `docs/monitor.md`.
 
 ## 1. Goal and scope
 

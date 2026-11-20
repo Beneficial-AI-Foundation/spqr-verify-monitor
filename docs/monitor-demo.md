@@ -1,6 +1,6 @@
 # Runtime monitor demo
 
-Date: 2026-11-19. Plan: `docs/monitor-plan.md`. Local document, never committed.
+Date: 2026-11-19. Plan: `docs/monitor-plan.md`. Run log of the development sessions. Branch names and `/tmp` paths refer to that time; to reproduce the results, follow `docs/monitor.md`.
 
 Branches:
 

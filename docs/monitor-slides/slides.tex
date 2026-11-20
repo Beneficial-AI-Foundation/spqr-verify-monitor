@@ -24,8 +24,8 @@
     \item \code{run\_refines} proves that every run of the \emph{extracted} Lean code refines
       \code{BraidModel}. It trusts the Aeneas translation, the translation patches and the
       axioms for the opaque primitives.
-    \item The monitor checks the \emph{compiled binary} on the paths that the tests execute.
-      It needs no new extraction.
+    \item The monitor checks the compiled test build (feature \code{monitor}) on the paths
+      that the tests execute. It needs no new extraction.
     \item So it sees what the proof cannot see:
       \begin{itemize}\footnotesize
         \item code that changed after the last extraction;
@@ -328,7 +328,7 @@ theorem accepted_alice
   \vspace{0.3em}
   \begin{itemize}\footnotesize
     \item \code{let \_ = auth.verify\_ct(...)} instead of \code{...?}. Every MAC in an honest
-      run is good, so no monitor of honest traces can see R4.
+      run is good, so the monitor accepts R4 on honest traces.
     \item A tampering driver changes one byte of a \code{Hdr} or \code{Ct2} chunk in transit.
   \end{itemize}
   \centering

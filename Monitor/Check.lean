@@ -14,7 +14,8 @@ For each party of a session the monitor:
 2. builds one table per operation from that operation's primitive calls. In a learning pass
    that replays the steps with `BraidModel.checkStep`, it checks that the state the code logged
    before each step is the model's, and adds to the table the decoder result and parity chunk
-   of the step, read at the model's state. The learning pass is not trusted;
+   of the step, read at the model's state. The theorems do not cover how the tables are built:
+   that they represent the log, including the values that the learning pass adds, is trusted;
 3. runs the verified checker `BraidModel.checkRun` from `initAliceO` / `initBobO` over the
    pairs (partial primitives of the table, observation). Its result is the verdict;
    `BraidModel.accepted_alice` and `BraidModel.accepted_bob` state what an acceptance means.

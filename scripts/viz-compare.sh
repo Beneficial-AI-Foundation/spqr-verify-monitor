@@ -44,25 +44,26 @@ CASES=(
 [ -x "$VERIFYTA" ] || { echo "verifyta not found at $VERIFYTA" >&2; exit 1; }
 [ -z "$VEIL_DIR" ] || [ -d "$VEIL_DIR" ] || { echo "VEIL_DIR $VEIL_DIR not found" >&2; exit 1; }
 
+# fail MESSAGE: stop the whole script. The helpers run in command substitutions, where
+# `set -e` does not stop the script.
+fail() { echo "viz-compare: $*" >&2; kill -TERM $$; exit 1; }
+
 # lean_verdict MUTANT TRACE PARTY: "OP LINE" from the Lean report, or "accepted".
 lean_verdict() {
-  local report=$OUT_DIR/$1/report.txt trace=$OUT_DIR/$1/traces/$2
-  [ -f "$report" ] || { echo "missing $report" >&2; exit 1; }
-  awk -v hdr="$trace:" -v p="$3" '
+  local report=$OUT_DIR/$1/report.txt trace=$OUT_DIR/$1/traces/$2 v
+  [ -f "$report" ] || fail "missing $report"
+  v=$(awk -v hdr="$trace:" -v p="$3" '
     index($0, hdr) == 1 { on = 1; next }
     on && !/^ / { on = 0 }
     on && $0 ~ "^  session 1 party " p ": " {
       if (match($0, /operation [0-9]+ \(line [0-9]+\)/)) {
         split(substr($0, RSTART, RLENGTH), w, /[ ()]+/); print w[2], w[4]
       } else if (/ACCEPTED/) print "accepted"
-      else print "unknown"
       exit
-    }' "$report"
+    }' "$report")
+  [ -n "$v" ] || fail "no Lean verdict for $trace party $3 in $report"
+  echo "$v"
 }
-
-# fail MESSAGE: stop the whole script. The helpers run in command substitutions, where
-# `set -e` does not stop the script.
-fail() { echo "viz-compare: $*" >&2; kill -TERM $$; exit 1; }
 
 # uppaal_verdict MUTANT TRACE PARTY MAX_OPS: "OP LINE" or "accepted".
 uppaal_verdict() {

@@ -12,7 +12,7 @@ it.
 |---|--------|----------|
 | 1 | If the monitor accepts a party, then the party's logged steps are a `BraidModel` run for every primitive function that agrees with the logged primitive calls. | Lean theorems (section 2) |
 | 2 | On the unmodified code, the monitor accepts every party of every test trace, and the cross-party checks pass. | `honest` run (section 4) |
-| 3 | Six one-line changes to `src/` pass `cargo test`. On the eleven standard traces, the monitor rejects all 22 parties for each change, and names the operation and the missing primitive value. | mutants M1, M2, M6, R1, R2, R3 (section 5) |
+| 3 | Six small changes to `src/` pass `cargo test`. On the eleven standard traces, the monitor rejects all 22 parties for each change, and names the operation and the missing primitive value. | mutants M1, M2, M6, R1, R2, R3 (section 5) |
 | 4 | A dropped verification result (R4) passes `cargo test`, and the monitor accepts R4 on the standard traces. A test driver that tampers with chunks in transit exposes it: when a `Ct2` decoder that got a tampered chunk completes, the MAC check fails and R4 accepts anyway, and the monitor rejects that step. The tamper tests also fail on their own key check. | mutant R4, tests `tamper_early` and `tamper_chaos` |
 | 5 | Fixed KeyGen randomness (M5) is a valid model run. A separate check, outside the theorems, rejects it. | mutant M5 |
 
@@ -106,7 +106,7 @@ use a fixed seed, so their traces are the same in every run.
 
 ## 5. Reproduce the mutant results
 
-Each file in `mutants/` is a one-line change to `src/`. `scripts/monitor-mutants.sh` copies the
+Each file in `mutants/` is a small change to `src/`. `scripts/monitor-mutants.sh` copies the
 committed tree, applies one patch, runs both test commands with a separate target directory, and
 runs the monitor on the new traces:
 

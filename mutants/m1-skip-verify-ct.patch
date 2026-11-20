@@ -1,0 +1,31 @@
+From 2ea76f02b8ed9f0c8f3cd1b3dd5c88b9e2f098ac Mon Sep 17 00:00:00 2001
+From: astefano <lacramioara.astefanoaei@gmail.com>
+Date: Thu, 19 Nov 2026 19:25:58 +0100
+Subject: [PATCH] Demo mutant: skip the ciphertext MAC check in
+ EkSentCt1Received::recv_ct2
+
+The runtime monitor demo needs a change that the test suite does not
+catch. This branch is not for merging.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/v1/unchunked/send_ek.rs | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/src/v1/unchunked/send_ek.rs b/src/v1/unchunked/send_ek.rs
+index cb3d9aa..e3da0e3 100644
+--- a/src/v1/unchunked/send_ek.rs
++++ b/src/v1/unchunked/send_ek.rs
+@@ -157,7 +157,8 @@ pub fn recv_ct2(
+ 
+         auth.update(epoch, &ss);
+         ct1.extend_from_slice(&ct2);
+-        auth.verify_ct(epoch, &ct1, &mac)?;
++        // Demo mutant for the runtime monitor: the ciphertext MAC is not checked.
++        let _ = &mac;
+         hax_lib::assume!(epoch < u64::MAX);
+         Ok((
+             send_ct::NoHeaderReceived {
+-- 
+2.56.0
+

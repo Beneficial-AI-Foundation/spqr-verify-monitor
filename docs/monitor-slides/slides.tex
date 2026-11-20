@@ -347,9 +347,11 @@ theorem accepted_alice
     \item \textbf{Delivery}: every received message was sent by the peer, as a multiset. A
       tampered copy must match a \code{tamper} event of the same operation: same epoch, kind,
       chunk index and length.
-    \item \textbf{Key agreement}: for each epoch, both parties logged the same secret. It
-      compares the keys of the step events, also for a rejected party.
-    \item \textbf{Randomness reuse}: KeyGen and Encaps1 never take the same randomness twice.
+    \item \textbf{Key agreement}: each party logs at most one secret per epoch, and when both
+      parties log one for an epoch, they are equal. An epoch with one party's secret only is
+      listed as incomplete. It reads the step events, also of a rejected party.
+    \item \textbf{Randomness reuse}: no two KeyGen or Encaps1 calls of a session take the same
+      randomness.
   \end{itemize}
   \vspace{0.8em}
   \begin{tikzpicture}[every node/.append style={font=\scriptsize}]
@@ -411,7 +413,9 @@ theorem accepted_alice
     \node[gap, text width=13cm, align=left] at (0, 0)
       {In both tools, R2 and R3 are found only because a Python script compares the MAC bytes
       with the model's formula and passes a token \code{good} / \code{bad}. With a finite
-      abstraction, the MAC mutants look honest. R1, R4 and key disagreement are out of reach.};
+      abstraction, the MAC mutants look honest. UPPAAL also finds R4, because the script compares
+      the received MAC with the computed one; Veil does not. R1 and key disagreement are out of
+      reach for both.};
   \end{tikzpicture}
 \end{frame}
 
@@ -430,7 +434,7 @@ theorem accepted_alice
     finds M1 & yes & yes & yes \\
     finds R1 & yes & no & no \\
     finds R2, R3 & yes & with a byte check in Python & with a byte check in Python \\
-    finds R4 (tampering) & yes & no & no \\
+    finds R4 (tampering) & yes & with a byte check in Python & no \\
     whole trace & 2 min, 85k operations & 10k steps in 90 s & 12-step windows \\
     picture & custom viewer & automaton, MSC & run panel \\
   \end{tabular}

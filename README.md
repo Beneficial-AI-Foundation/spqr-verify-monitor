@@ -18,8 +18,8 @@ for the results and the commands that reproduce them.
 The monitor adds hooks to `src/`. The hooks compile only with the cargo feature `monitor`. With
 the feature off, the expanded crate is identical to upstream `main`.
 
-The soundness theorems of the monitor (`Spqr/Specs/Braid/StateMachine/PartialModel.lean` and
-`Monitor.lean`) are also proposed to upstream `main` in a separate pull request.
+The soundness theorems of the monitor are in `Spqr/Specs/Braid/StateMachine/PartialModel.lean`
+and `Spqr/Specs/Braid/StateMachine/Monitor.lean`.
 
 ## Repository Structure
 

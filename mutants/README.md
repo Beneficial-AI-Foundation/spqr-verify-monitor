@@ -1,20 +1,25 @@
 # Demo mutants for the runtime monitor
 
-Each patch changes `src/` in one way. With the patch applied, `cargo test` still passes, and the
-monitor rejects the traces. Apply one patch at a time:
+Each patch makes one small change to `src/`. `cargo test` still passes with each patch. The
+monitor results are in `docs/monitor.md`, section 5.
 
-```
+| Patch | Change |
+|-------|--------|
+| `m1-skip-verify-ct.patch` | deletes the `verify_ct` call in `recv_ct2` |
+| `m2-skip-verify-hdr.patch` | deletes the `verify_hdr` call in `recv_header` |
+| `m5-keygen-randomness-fixed.patch` | `generate` uses all-zero KeyGen randomness |
+| `m6-header-mac-label.patch` | `mac_hdr` uses the ciphertext label |
+| `r1-mac-root-key.patch` | `mac_ct` keys the HMAC with `root_key` |
+| `r2-mac-le-epoch.patch` | `mac_ct` encodes the epoch little-endian |
+| `r3-mac-ct2-only.patch` | both parties MAC `ct2` only, not `ct1 ‖ ct2` |
+| `r4-verify-result-dropped.patch` | drops the result of `verify_ct` |
+
+To run all of them, use `scripts/monitor-mutants.sh` from the repository root. To try one patch
+by hand, apply it to a clean checkout:
+
+```bash
 git apply mutants/r2-mac-le-epoch.patch
 ```
 
-| Patch | Change | Monitor |
-|-------|--------|---------|
-| `m1-skip-verify-ct.patch` | deletes the `verify_ct` call | rejects 22/22 parties |
-| `r1-mac-root-key.patch` | `mac_ct` keys the HMAC with `root_key` | rejects 22/22 parties |
-| `r2-mac-le-epoch.patch` | `mac_ct` encodes the epoch little-endian | rejects 22/22 parties |
-| `r3-mac-ct2-only.patch` | both parties MAC `ct2` only, not `ct1 ‖ ct2` | rejects 22/22 parties |
-| `r4-verify-result-dropped.patch` | drops the result of `verify_ct` | accepts honest traces, rejects the tamper tests |
-
-The traces come from `cargo +1.99.1 test --features monitor` with `SPQR_MONITOR_DIR` set. Use
-your own `CARGO_TARGET_DIR` for each run. `~/.cargo/config.toml` shares one target directory
-between worktrees, so two runs at the same time can use each other's binaries.
+If several checkouts share one cargo target directory, set `CARGO_TARGET_DIR` per run. Two runs
+that share a target directory can run each other's test binaries.

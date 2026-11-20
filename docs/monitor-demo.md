@@ -88,7 +88,7 @@ SOME CHECKS FAILED
 
 Each party is rejected at its first transition (5), the step that completes the `ct2 ‖ mac`
 decoder and emits the epoch key: A in epoch 1, B in epoch 2 (B sends the encapsulation key in
-even epochs). The verified checker's `receiveO` needs the MAC of `ct1 ‖ ct2` under the updated
+even epochs). The verified checker's `receiveM` needs the MAC of `ct1 ‖ ct2` under the updated
 MAC key, and the code computed none during that call.
 
 Over all eleven M1 traces (`lake env lean --run Monitor/Main.lean /tmp/spqr-traces-m1/*.jsonl`),
@@ -143,7 +143,7 @@ can see R4. The tampering driver (`src/test/orchestrator/tamper.rs`) gives the a
 It changes some `ct2` / `hdr` chunks in transit, tolerates the expected `recv` errors, and logs a
 `tamper` event `[orig, copy]` for each change. The delivery check accepts a received message if it
 is a logged tampered copy of a sent message. With R4 applied, the model's `Receive()` fails
-(`receiveO = some none`) on a tampered chunk, but the code accepts it, so the checker rejects the
+(`receiveM Q σ m = some none`) on a tampered chunk, but the code accepts it, so the checker rejects the
 step. The patch is `mutants/r4-verify-result-dropped.patch`.
 
 ### R2: little-endian epoch in the ciphertext MAC (branch)

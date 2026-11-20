@@ -16,7 +16,7 @@ For each party of a session the monitor:
    before each step is the model's, and adds to the table the decoder result and parity chunk
    of the step, read at the model's state. The theorems do not cover how the tables are built:
    that they represent the log, including the values that the learning pass adds, is trusted;
-3. runs the verified checker `BraidModel.checkRun` from `initAliceO` / `initBobO` over the
+3. runs the verified checker `BraidModel.checkRun` from `initAliceM` / `initBobM` over the
    pairs (partial primitives of the table, observation). Its result is the verdict;
    `BraidModel.accepted_alice` and `BraidModel.accepted_bob` state what an acceptance means.
 
@@ -185,15 +185,15 @@ def describeMsg (m : Msg MChunk) : String :=
     | .ct2 c => s!"ct2 #{c.index}"
   s!"epoch {m.epoch} {p}"
 
-/-- Which primitive value of a step is missing, for the report. It follows `sendO` and
-`receiveEqO` for the transitions that use primitives. -/
+/-- Which primitive value of a step is missing, for the report. It follows `sendM` and
+`receiveEqM` for the transitions that use primitives. -/
 def explainMissing (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) : Obs MChunk → String
   | .send r _ _ _ _ =>
     match σ with
     | .keysUnsampled e a =>
       match Q.keyGen r with
       | none => "no generate call for the randomness"
-      | some kg => match Auth.macHdrO Q a e kg.2.1 with
+      | some kg => match Auth.macHdrM Q a e kg.2.1 with
         | none => "no hmac call with the key and data of the header MAC"
         | some _ => "no chunk of the header encoder"
     | .headerReceived e a hdr _ =>
@@ -201,7 +201,7 @@ def explainMissing (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) : Obs MC
       | none => "no encaps1 call for the header and randomness"
       | some x => match Q.kdfOk x.2.2 e with
         | none => "no hkdf call for KDF_OK"
-        | some ss => match Auth.updateO Q a e ss with
+        | some ss => match Auth.updateM Q a e ss with
           | none => "no hkdf call for KDF_AUTH"
           | some _ => "no chunk of the ct1 encoder"
     | _ => "no parity chunk for the encoder"
@@ -219,13 +219,13 @@ def explainMissing (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) : Obs MC
           | none => "no decaps call"
           | some ss₀ => match Q.kdfOk ss₀ e with
             | none => "no hkdf call for KDF_OK"
-            | some ss => match Auth.updateO Q a e ss with
+            | some ss => match Auth.updateM Q a e ss with
               | none => "no hkdf call for KDF_AUTH"
-              | some a' => match Auth.macCtO Q a' e (ct1 ++ msg.take Q.ct2Size) with
+              | some a' => match Auth.macCtM Q a' e (ct1 ++ msg.take Q.ct2Size) with
                 | none => "no hmac call with the key and data of the ciphertext MAC (verify_ct)"
                 | some _ => "unknown"
         | .noHeaderReceived e a _ =>
-          match Auth.macHdrO Q a e (msg.take Q.headerSize) with
+          match Auth.macHdrM Q a e (msg.take Q.headerSize) with
           | none => "no hmac call with the key and data of the header MAC (verify_hdr)"
           | some _ => "unknown"
         | .ct1Sampled _ _ hdr .. | .ct1Acknowledged _ _ hdr .. =>
@@ -248,7 +248,7 @@ def resultDiffs (k' k : Option Key) (σ' : State MEnc MDec) (l : Label) (e : Nat
 def explainStep (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) (o : Obs MChunk) : String :=
   match o with
   | .send r m k l e =>
-    match sendO Q σ r with
+    match sendM Q σ r with
     | none => s!"missing primitive value: {explainMissing Q σ o}"
     | some (σ', m', k') =>
       let d := [if m'.epoch != m.epoch then some "message epoch" else none,
@@ -257,13 +257,13 @@ def explainStep (Q : OPrims MEnc MDec MChunk) (σ : State MEnc MDec) (o : Obs MC
           then some "chunk bytes" else none] ++ resultDiffs k' k σ' l e
       s!"send differs from the model in: {", ".intercalate d.reduceOption}"
   | .recvOk m k l e =>
-    match receiveO Q σ m with
+    match receiveM Q σ m with
     | none => s!"missing primitive value: {explainMissing Q σ o}"
     | some none => "the model's Receive() fails, the code accepted"
     | some (some (σ', k')) =>
       s!"recv differs from the model in: {", ".intercalate (resultDiffs k' k σ' l e).reduceOption}"
   | .recvErr m =>
-    match receiveO Q σ m with
+    match receiveM Q σ m with
     | none => s!"missing primitive value: {explainMissing Q σ o}"
     | some (some _) => "the model's Receive() succeeds, the code returned an error"
     | some none => "unknown"
@@ -323,7 +323,7 @@ def checkParty (party : String) (evs : Array Event) : PartyResult := Id.run do
     | .ok (t, a) => T0 := t; all := a
     | .error err => return fail err 0
   let Q0 := T0.prims
-  let σ0? := if party == "A" then initAliceO Q0 ss else initBobO Q0 ss
+  let σ0? := if party == "A" then initAliceM Q0 ss else initBobM Q0 ss
   let some σ0 := σ0? | return fail "initialization: no hkdf call for the authenticator" 0
   -- learning pass: one table per operation, replayed with the checker's own step function
   let mut steps : Array (OPrims MEnc MDec MChunk × Obs MChunk) := #[]

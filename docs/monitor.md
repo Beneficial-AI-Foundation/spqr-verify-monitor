@@ -39,8 +39,9 @@ The other material on the branch illustrates these results and adds no detection
 ## 2. What is proved, and what is trusted
 
 `Spqr/Specs/Braid/StateMachine/PartialModel.lean` defines partial primitives `OPrims` (a table
-of the primitive values that one operation logged) and the steps `sendO` and `receiveO` over
-them. `Agrees P Q` says that the total primitives `P` extend the table `Q`.
+of the primitive values that one operation logged). The model's steps `sendM` and `receiveM` are
+generic over a monad, and the checker runs them in `Option` over `OPrims`. `Agrees P Q` says that
+the total primitives `P` extend the table `Q`.
 `Spqr/Specs/Braid/StateMachine/Monitor.lean` defines the checker `checkRun` and proves:
 
 - `checkRun_sound`: if `checkRun σ steps = some σ'`, then for every `P` that extends the table of

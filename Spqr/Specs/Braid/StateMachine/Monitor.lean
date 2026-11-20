@@ -13,7 +13,7 @@ A runtime monitor observes the calls of one party: each `send` with the randomne
 message and key it returned and the state it reached, and each `recv` with the message it got
 and its result. It also observes the primitive calls the party makes during each of these
 calls, which give partial primitives `Q : OPrims` for that call. `checkRun σ steps` replays the
-pairs `(Q, obs)` of `steps` from `σ` through `sendO` and `receiveO`, each observation with its
+pairs `(Q, obs)` of `steps` from `σ` through `sendM` and `receiveM`, each observation with its
 own `Q`. It returns the final state when every primitive value a step needs is known from that
 step's `Q` and every observation is what the model's step gives.
 
@@ -121,16 +121,16 @@ and gives `σ`. -/
 def checkStep (Q : OPrims Enc Dec Chunk) (σ : State Enc Dec) :
     Obs Chunk → Option (State Enc Dec)
   | .send r m k l e =>
-    match sendO Q σ r with
+    match sendM Q σ r with
     | some (σ', m', k') =>
       if m' = m ∧ k' = k ∧ σ'.label = l ∧ σ'.epoch = e then some σ' else none
     | none => none
   | .recvOk m k l e =>
-    match receiveO Q σ m with
+    match receiveM Q σ m with
     | some (some (σ', k')) => if k' = k ∧ σ'.label = l ∧ σ'.epoch = e then some σ' else none
     | _ => none
   | .recvErr m =>
-    match receiveO Q σ m with
+    match receiveM Q σ m with
     | some none => some σ
     | _ => none
 
@@ -168,7 +168,7 @@ theorem checkRun_sound {P : Prims Enc Dec Chunk} {σ σ' : State Enc Dec}
       · next hs =>
         obtain ⟨⟨rfl, rfl, hl, he⟩, h⟩ := Option.ite_none_right_eq_some.mp h₁
         cases h
-        exact .send (sendO_sound hQ hs) hl he (ih h₂)
+        exact .send (sendM_sound hQ hs) hl he (ih h₂)
       · cases h₁
     | recvOk m k l e =>
       simp only [checkStep] at h₁
@@ -176,48 +176,48 @@ theorem checkRun_sound {P : Prims Enc Dec Chunk} {σ σ' : State Enc Dec}
       · next hr =>
         obtain ⟨⟨rfl, hl, he⟩, h⟩ := Option.ite_none_right_eq_some.mp h₁
         cases h
-        exact .recvOk (receiveO_sound hQ hr) hl he (ih h₂)
+        exact .recvOk (receiveM_sound hQ hr) hl he (ih h₂)
       · cases h₁
     | recvErr m =>
       simp only [checkStep] at h₁
       split at h₁
       · next hr =>
         cases h₁
-        exact .recvErr (receiveO_sound hQ hr) (ih h₂)
+        exact .recvErr (receiveM_sound hQ hr) (ih h₂)
       · cases h₁
 
 /-- Assume:
 
-* `initAliceO Q₀ ss = some σ₀`;
+* `initAliceM Q₀ ss = some σ₀`;
 * `checkRun σ₀ steps = some σ'`;
 * `P` extends `Q₀` and the partial primitives of each step of `steps`.
 
 Then the observations of `steps` are steps of the model under `P` from `initAlice P ss` to `σ'`
 (`Explains`), and the model has a run from `initAlice P ss` to `σ'` that emits their keys. -/
 theorem accepted_alice {Q₀ : OPrims Enc Dec Chunk} {ss : Bytes} {σ₀ σ' : State Enc Dec}
-    {steps : List (OPrims Enc Dec Chunk × Obs Chunk)} (h₀ : initAliceO Q₀ ss = some σ₀)
+    {steps : List (OPrims Enc Dec Chunk × Obs Chunk)} (h₀ : initAliceM Q₀ ss = some σ₀)
     (h : checkRun σ₀ steps = some σ') (P : Prims Enc Dec Chunk) (hA₀ : Agrees P Q₀)
     (hA : ∀ q ∈ steps, Agrees P q.1) :
     Explains P (initAlice P ss) (steps.map (·.2)) σ' ∧
       Run P (initAlice P ss) σ' (obsKeys (steps.map (·.2))) := by
-  rw [initAliceO_sound hA₀ h₀]
+  rw [initAliceM_sound hA₀ h₀]
   exact ⟨checkRun_sound hA h, (checkRun_sound hA h).run⟩
 
 /-- Assume:
 
-* `initBobO Q₀ ss = some σ₀`;
+* `initBobM Q₀ ss = some σ₀`;
 * `checkRun σ₀ steps = some σ'`;
 * `P` extends `Q₀` and the partial primitives of each step of `steps`.
 
 Then the observations of `steps` are steps of the model under `P` from `initBob P ss` to `σ'`
 (`Explains`), and the model has a run from `initBob P ss` to `σ'` that emits their keys. -/
 theorem accepted_bob {Q₀ : OPrims Enc Dec Chunk} {ss : Bytes} {σ₀ σ' : State Enc Dec}
-    {steps : List (OPrims Enc Dec Chunk × Obs Chunk)} (h₀ : initBobO Q₀ ss = some σ₀)
+    {steps : List (OPrims Enc Dec Chunk × Obs Chunk)} (h₀ : initBobM Q₀ ss = some σ₀)
     (h : checkRun σ₀ steps = some σ') (P : Prims Enc Dec Chunk) (hA₀ : Agrees P Q₀)
     (hA : ∀ q ∈ steps, Agrees P q.1) :
     Explains P (initBob P ss) (steps.map (·.2)) σ' ∧
       Run P (initBob P ss) σ' (obsKeys (steps.map (·.2))) := by
-  rw [initBobO_sound hA₀ h₀]
+  rw [initBobM_sound hA₀ h₀]
   exact ⟨checkRun_sound hA h, (checkRun_sound hA h).run⟩
 
 end BraidModel

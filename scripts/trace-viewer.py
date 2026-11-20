@@ -298,16 +298,18 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         rows = rows[:max_rows]
     row_of = {o.n: i for i, o in enumerate(rows)}
 
-    W = 1100
-    xs = {"A": 260, "B": 840}
-    top, rh = 90, 24
-    H = top + rh * len(rows) + 40
-    out = [svg_text(30, 30, title, 15, weight="bold")]
+    W = 860
+    xs = {"A": 240, "B": 620}
+    t0 = 40 if title else 0
+    top, rh = 60 + t0, 26
+    H = top + rh * len(rows) + 30
+    out = [svg_text(20, 28, title, 15, weight="bold")] if title else []
     for p, xx in xs.items():
-        out.append(f"<rect x='{xx - 40}' y='42' width='80' height='26' rx='4' fill='#37474f'/>")
-        out.append(svg_text(xx, 60, "Alice (A)" if p == "A" else "Bob (B)", 12, "middle",
+        out.append(f"<rect x='{xx - 45}' y='{t0 + 8}' width='90' height='28' rx='4' "
+                   f"fill='#37474f'/>")
+        out.append(svg_text(xx, t0 + 27, "Alice (A)" if p == "A" else "Bob (B)", 13, "middle",
                             "white", "bold"))
-        out.append(f"<line x1='{xx}' y1='68' x2='{xx}' y2='{H - 30}' stroke='#90a4ae' "
+        out.append(f"<line x1='{xx}' y1='{t0 + 36}' x2='{xx}' y2='{H - 20}' stroke='#90a4ae' "
                    f"stroke-dasharray='4 3'/>")
     y_of = lambda i: top + rh * i + rh / 2
     notes = []
@@ -329,18 +331,17 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         tcol = "white" if lab in DARK and not after else ("#777" if after else "#111")
         stroke = RED if is_rej else "#555"
         sw = 2.5 if is_rej else 0.6
-        out.append(f"<rect x='{xx - 80}' y='{y - 9}' width='160' height='18' rx='3' "
+        out.append(f"<rect x='{xx - 95}' y='{y - 10}' width='190' height='20' rx='3' "
                    f"fill='{fill}' stroke='{stroke}' stroke-width='{sw}'/>")
-        out.append(svg_text(xx, y + 4, f"{lab} e{ep}" if ep is not None else lab, 10,
+        out.append(svg_text(xx, y + 4.5, f"{lab} e{ep}" if ep is not None else lab, 12,
                             "middle", tcol))
         side = -1 if o.party == "A" else 1
-        out.append(svg_text(xx + side * 88, y + 4, f"op {o.n}", 9,
-                            "end" if side < 0 else "start", "#78909c"))
         verb = "send" if o.step["f"] == "States::send" else "recv"
-        out.append(svg_text(xx + side * 135, y + 4, verb, 9, "end" if side < 0 else "start",
-                            "#78909c"))
+        out.append(svg_text(xx + side * 102, y + 4.5,
+                            f"{verb} op {o.n}" if side < 0 else f"op {o.n} {verb}", 11,
+                            "end" if side < 0 else "start", "#78909c"))
         if kep is not None:
-            kx = xx + side * 172
+            kx = xx + side * 205
             out.append(f"<circle cx='{kx}' cy='{y}' r='8' fill='#f2b705' stroke='#7a5c00'/>")
             out.append(svg_text(kx, y + 3.5, f"K{kep}", 8, "middle", "#3e2b00", "bold"))
         if is_rej:
@@ -353,8 +354,8 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
     for i, src, dst, rn, m, k in arrows:
         x0, x1 = xs[src], xs[dst]
         d = 1 if x1 > x0 else -1
-        x0 += d * 80
-        x1 -= d * 80
+        x0 += d * 95
+        x1 -= d * 95
         y0 = y_of(i)
         label = msg_text(m)
         tam = k in tampered.values()
@@ -365,7 +366,7 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
                           f"<path d='M{xm - 4:.1f},{y0 + 2} l8,8 M{xm + 4:.1f},{y0 + 2} l-8,8' "
                           f"stroke='{GREY}' stroke-width='1.5'/>")
             out.append(arrows_svg)
-            out.append(svg_text(x0 + d * 6, y0 - 3, f"{label} (lost)", 8,
+            out.append(svg_text(x0 + d * 6, y0 - 3, f"{label} (lost)", 10,
                                 "start" if d > 0 else "end", GREY))
             continue
         if rn not in row_of:
@@ -376,25 +377,25 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact):
         out.append(f"<line x1='{x0}' y1='{y0}' x2='{x1}' y2='{y1:.1f}' stroke='{col}' "
                    f"stroke-width='{1.6 if tam else 1}' marker-end='url(#ah{'r' if tam else ''})'"
                    f"{dash}/>")
-        out.append(svg_text(x0 + d * 6, y0 - 3, label, 8, "start" if d > 0 else "end", col))
+        out.append(svg_text(x0 + d * 6, y0 - 3, label, 10, "start" if d > 0 else "end", col))
         if tam:
             xm, ym = (x0 + x1) / 2, (y0 + y1) / 2
             out.append(f"<path d='M{xm - 6:.1f},{ym - 9:.1f} l9,7 l-5,1 l7,8 l-11,-6 l5,-1 z' "
                        f"fill='{RED}'/>")
-            out.append(svg_text(xm + 10, ym - 4, "tampered in transit", 9, fill=RED,
+            out.append(svg_text(xm + 10, ym + 16, "tampered in transit", 11, fill=RED,
                                 weight="bold"))
     for i, party, diag in notes:
         y = y_of(i) + 16
-        lines = wrap(diag, 70)
-        bx = 360
-        bw = 380
-        out.append(f"<rect x='{bx}' y='{y}' width='{bw}' height='{14 * len(lines) + 24}' rx='4' "
+        lines = wrap(diag, 52)
+        bx = 250
+        bw = 360
+        out.append(f"<rect x='{bx}' y='{y}' width='{bw}' height='{16 * len(lines) + 28}' rx='4' "
                    f"fill='white' stroke='{RED}' stroke-width='1.5'/>")
-        out.append(svg_text(bx + 8, y + 15, f"Monitor: party {party} REJECTED here", 10, fill=RED,
+        out.append(svg_text(bx + 8, y + 15, f"Monitor: party {party} REJECTED here", 12, fill=RED,
                             weight="bold"))
         for j, line in enumerate(lines):
-            out.append(svg_text(bx + 8, y + 30 + 14 * j, line, 9, fill="#333"))
-        H = max(H, y + 14 * len(lines) + 40)
+            out.append(svg_text(bx + 8, y + 34 + 16 * j, line, 11, fill="#333"))
+        H = max(H, y + 16 * len(lines) + 44)
     defs = ("<defs><marker id='ah' markerWidth='8' markerHeight='8' refX='7' refY='4' "
             "orient='auto'><path d='M0,0 L8,4 L0,8 z' fill='#455a64'/></marker>"
             f"<marker id='ahr' markerWidth='8' markerHeight='8' refX='7' refY='4' orient='auto'>"
@@ -429,7 +430,7 @@ def main():
     if not ops:
         sys.exit(f"no operations for session {a.session} in {a.trace}")
     rejects = parse_report(a.report, a.trace, a.session)
-    title = a.title or f"{a.trace.split('/')[-1]}, session {a.session}"
+    title = a.title if a.title is not None else f"{a.trace.split('/')[-1]}, session {a.session}"
     if a.mode == "overview":
         svg = overview([o for o in ops if a.lo <= o.n <= a.hi], rejects, title)
     else:

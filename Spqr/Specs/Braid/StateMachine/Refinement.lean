@@ -117,7 +117,7 @@ theorem absAuth_new (P : CodePrims) (hP : CodeAgrees P) (v : alloc.vec.Vec Std.U
   obtain ⟨hr, -, hrm⟩ := post_of_ok (authenticator.Authenticator.update_spec _ _ _ hb) hu
   have hz' : z.val = List.replicate 32 0#u8 := by
     exact (post_of_ok (alloc.vec.from_elem_spec _ _ _ rfl) hz).1
-  simp only [absAuth, Auth.init, Auth.update, hP.kdfAuth]
+  simp only [absAuth, Auth.init, hP.kdfAuth, Auth.initM, Auth.updateM, id_run, id_bind, id_pure]
   simp only [alloc.vec.Vec.deref, hz', Slice.from_val] at hrm
   rw [← hrm]
   have hr' : (a.root_key.val).length = 32 := hr
@@ -299,7 +299,7 @@ theorem absAuth_update (P : CodePrims) (hP : CodeAgrees P) (a a' : authenticator
     absAuth a' = Auth.update P (absAuth a) ep.val k.val := by
   have hb := authenticator.Authenticator.length_le_of_update_ok h
   obtain ⟨hr, -, hrm⟩ := post_of_ok (authenticator.Authenticator.update_spec _ _ _ hb) h
-  simp only [absAuth, Auth.update, hP.kdfAuth, ← hrm]
+  simp only [absAuth, Auth.update, hP.kdfAuth, ← hrm, Auth.updateM, id_run, id_bind, id_pure]
   have hr' : (a'.root_key.val).length = 32 := hr
   simp only [List.take_left' hr', List.drop_left' hr']
 
@@ -328,7 +328,7 @@ theorem mac_hdr_ok (P : CodePrims) (hP : CodeAgrees P) (a : authenticator.Authen
   have hl : ascii "Signal_PQCKA_V1_MLKEM768" ++ ascii ":ekheader" =
       authenticator.Authenticator.MAC_HDR_LABEL := by decide
   rw [hmac_ok P hP ":ekheader" _ _ ep hdr.val m ?_ hm]
-  · simp only [Auth.macHdr, absAuth, alloc.vec.Vec.deref_val]
+  · simp only [Auth.macHdr, absAuth, alloc.vec.Vec.deref_val, Auth.macHdrM, id_run]
   · rw [alloc.vec.Vec.deref_val, alloc.slice.Slice.concat_shared_id_ok_val _ (fun _ => rfl) hd, hl]
     simp only [Array.to_slice, Array.make, Array.from_val, Slice.from_val, List.map_cons,
         List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, List.cons_append,
@@ -348,7 +348,7 @@ theorem mac_ct_ok (P : CodePrims) (hP : CodeAgrees P) (a : authenticator.Authent
   have hl : ascii "Signal_PQCKA_V1_MLKEM768" ++ ascii ":ciphertext" =
       authenticator.Authenticator.MAC_CT_LABEL := by decide
   rw [hmac_ok P hP ":ciphertext" _ _ ep ct.val m ?_ hm]
-  · simp only [Auth.macCt, absAuth, alloc.vec.Vec.deref_val]
+  · simp only [Auth.macCt, absAuth, alloc.vec.Vec.deref_val, Auth.macCtM, id_run]
   · rw [alloc.vec.Vec.deref_val, alloc.slice.Slice.concat_shared_id_ok_val _ (fun _ => rfl) hd, hl]
     simp only [Array.to_slice, Array.make, Array.from_val, Slice.from_val, List.map_cons,
         List.map_nil, List.flatten_cons, List.flatten_nil, List.append_nil, List.cons_append,
@@ -379,7 +379,8 @@ theorem ct2_encoder_ok (P : CodePrims) (hP : CodeAgrees P)
   have hen := hP.encode _ _ hr
   simp only [alloc.vec.Vec.deref, Slice.from_val] at hmac hct hvv' hen
   rw [hct] at hmac
-  simp only [ct2Encoder, he2, ← hmac, ← hen, hvv']
+  simp only [ct2Encoder, he2, ← hmac, ← hen, hvv', ct2EncoderM, id_run, id_bind, id_pure,
+    Auth.macCtM_eq]
   congr 1
   rw [Slice.to_vec_U8_ok_val hv]; simp only [alloc.vec.Vec.deref, Slice.from_val]
 
@@ -423,7 +424,8 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, rfl⟩ := hc
     obtain ⟨rfl, -⟩ := hout
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, hP.nextChunk _ _ _ hn, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, hP.nextChunk _ _ _ hn, and_self, absMsg, Option.map_none,
+      sendM, id_run, id_bind, id_pure]
   case HeaderSent.headerSent s e a dk d enc =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, hp⟩ := h
     obtain ⟨ep, hep, ⟨s1, c⟩, hc, hout⟩ := hs
@@ -435,7 +437,8 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     have hnc := hP.nextChunk _ _ _ hn
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, hnc, hp, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, hnc, hp, and_self, absMsg, Option.map_none, sendM,
+      id_run, id_bind, id_pure]
   case Ct1Received.ct1Received s e a dk ct1 enc =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, hp⟩ := h
     obtain ⟨ep, hep, ⟨s1, c⟩, hc, hout⟩ := hs
@@ -448,7 +451,7 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     have hnc := hP.nextChunk _ _ _ hn
     refine ⟨[], ?_⟩
     simp only [Refines, BraidModel.send, hnc, alloc.vec.Vec.length, hp, and_self, absMsg,
-        Option.map_none]
+        Option.map_none, sendM, id_run, id_bind, id_pure]
   case Ct1Sampled.ct1Sampled s e a hdr es ct1 enc d =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl, rfl⟩ := h
     obtain ⟨ep, hep, ⟨s1, c⟩, hc, hout⟩ := hs
@@ -460,7 +463,8 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     have hnc := hP.nextChunk _ _ _ hn
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none, sendM, id_run,
+      id_bind, id_pure]
   case EkReceivedCt1Sampled.ekReceivedCt1Sampled s e a es ct1 hdr ek enc =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩ := h
     obtain ⟨ep, hep, ⟨s1, c⟩, hc, hout⟩ := hs
@@ -472,7 +476,8 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     have hnc := hP.nextChunk _ _ _ hn
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none, sendM, id_run,
+      id_bind, id_pure]
   case Ct2Sampled.ct2Sampled s e a enc =>
     obtain ⟨rfl, rfl, rfl⟩ := h
     obtain ⟨ep, hep, ⟨s1, c⟩, hc, hout⟩ := hs
@@ -484,7 +489,8 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     have hnc := hP.nextChunk _ _ _ hn
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, hnc, and_self, absMsg, Option.map_none, sendM, id_run,
+      id_bind, id_pure]
   case EkSentCt1Received.ekSentCt1Received s e a dk ct1 d =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, hp⟩ := h
     obtain ⟨ep, hep, hout⟩ := hs
@@ -492,7 +498,7 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     refine ⟨[], ?_⟩
     simp only [Refines, BraidModel.send, alloc.vec.Vec.length, hp, and_self, absMsg,
-      Option.map_none]
+      Option.map_none, sendM, id_run, id_pure]
   case NoHeaderReceived.noHeaderReceived s e a d =>
     obtain ⟨rfl, rfl, rfl, hp⟩ := h
     obtain ⟨ep, hep, hout⟩ := hs
@@ -500,14 +506,14 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     obtain ⟨rfl, -⟩ := hout
     refine ⟨[], ?_⟩
     simp only [Refines, BraidModel.send, alloc.vec.Vec.length, hp, and_self, absMsg,
-      Option.map_none]
+      Option.map_none, sendM, id_run, id_pure]
   case Ct1Acknowledged.ct1Acknowledged s e a hdr es ct1 d =>
     obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩ := h
     obtain ⟨ep, hep, hout⟩ := hs
     simp only [send_ct.Ct1Acknowledged.epoch, Result.ok.injEq] at hep; subst hep
     obtain ⟨rfl, -⟩ := hout
     refine ⟨[], ?_⟩
-    simp only [Refines, BraidModel.send, and_self, absMsg, Option.map_none]
+    simp only [Refines, BraidModel.send, and_self, absMsg, Option.map_none, sendM, id_run, id_pure]
   case KeysUnsampled.keysUnsampled s e a =>
     obtain ⟨rfl, rfl⟩ := h
     obtain ⟨ep, hep, ⟨⟨s1, c⟩, rng1⟩, hc, hout⟩ := hs
@@ -539,7 +545,7 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     rw [hts, hmac] at he
     refine ⟨r, ?_⟩
     subst h1
-    simp only [BraidModel.send, hr, he, hnc]
+    simp only [BraidModel.send, hr, he, hnc, sendM, id_run, id_bind, id_pure, Auth.macHdrM_eq]
     simp only [Refines, and_self, absMsg, Option.map_none]
   case HeaderReceived.headerReceived s e a hdr d =>
     obtain ⟨rfl, rfl, rfl, rfl⟩ := h
@@ -592,7 +598,7 @@ theorem send_refines (P : CodePrims) (hP : CodeAgrees P) {R : Type} (i₁ : rand
     have hnc := hP.nextChunk _ _ _ hn
     simp only [alloc.vec.Vec.deref, Slice.from_val] at he
     refine ⟨r, ?_⟩
-    simp only [BraidModel.send, hr, he, hnc]
+    simp only [BraidModel.send, hr, he, hnc, sendM, id_run, id_bind, id_pure, Auth.updateM_eq]
     simp only [Refines, hau, and_self, absMsg, Option.map_some, absKey, hsec]
 
 /-- Related states have the same epoch. -/
@@ -610,7 +616,7 @@ theorem receiveEq_of_not_expects (P : CodePrims) {s : States} {σ : State _ _} (
   cases s <;> cases σ <;> simp only [Refines] at h <;>
     rcases p with _ | _ | _ | _ | (_ | _) | _ | _ <;>
     simp only [States.Expects, not_true_eq_false] at hp <;>
-    simp only [receiveEq, absMsg]
+    simp only [receiveEq, absMsg, receiveEqM, id_run, id_pure]
 
 /-- If `m` has the epoch of `σ`, then the model's `Receive()` of `m` on `σ` is `receiveEq` on the
 payload of `m`. -/
@@ -618,8 +624,9 @@ theorem receive_of_eq (P : CodePrims) {σ : State _ _} {m : Msg encoding.Chunk}
     (h : m.epoch = σ.epoch) : BraidModel.receive P σ m = BraidModel.receiveEq P σ m.payload := by
   cases σ <;> simp only [State.epoch] at h <;>
     simp only [receive, h, State.epoch, gt_iff_lt, lt_self_iff_false, ↓reduceIte,
-      Nat.left_eq_add, one_ne_zero]
-  all_goals simp only [receiveEq]
+      Nat.left_eq_add, one_ne_zero, receiveM, id_run, id_pure]
+  all_goals simp only [receiveEq, receiveEqM, id_run, id_bind, id_pure, ekDoneM, Auth.macHdrM_eq,
+    Auth.macCtM_eq, Auth.updateM_eq, ct2EncoderM_eq]
 
 /-- The model's `ek` branch of `Ct1Acknowledged` (transition (11)) and of `Ct1Sampled` with an
 acknowledgement (transitions (8), (9)), with `onNone` the state when `ek` is still incomplete. -/
@@ -627,11 +634,7 @@ def ekStep (P : CodePrims) (e : Nat) (a : Auth) (hdr es ct1 : Bytes)
     (d : encoding.polynomial.PolyDecoder) (onNone : encoding.polynomial.PolyDecoder →
       State encoding.polynomial.PolyEncoder encoding.polynomial.PolyDecoder) :
     Option (State encoding.polynomial.PolyEncoder encoding.polynomial.PolyDecoder × Option Key) :=
-  match P.message d with
-  | none => some (onNone d, none)
-  | some ek =>
-    if P.ekMatches hdr ek then some (.ct2Sampled e a (ct2Encoder P e a es ct1 hdr ek), none)
-    else none
+  Id.run (ekDoneM P e a hdr es ct1 d onNone)
 
 /-- Assume `CodeAgrees P`. If `Ct1Sent::recv_ek uc ep ek` returns `Ok v`, then `v` has the
 epoch, authenticator, `es` and `ct1` of `uc` and stores `ek` in place of the header, and the
@@ -671,7 +674,7 @@ theorem ct1Acknowledged_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
   | none =>
     simp only [Result.ok.injEq, core.result.Result.Ok.injEq] at h; subst h
     exact ⟨.ct1Acknowledged st.uc.epoch.val (absAuth st.uc.auth) st.uc.hdr.val st.uc.es.val
-      st.uc.ct1.val d', by simp only [ekStep, h4,
+      st.uc.ct1.val d', by simp only [ekStep, ekDoneM, id_run, id_bind, id_pure, ct2EncoderM_eq, h4,
           Option.map_none], by simp only [Refines, and_self]⟩
   | some m =>
     simp only [Result.bind_eq_ok] at h
@@ -687,7 +690,8 @@ theorem ct1Acknowledged_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
     obtain ⟨rfl, rfl⟩ := ct2_encoder_ok P hP _ _ _ _ _ st.uc.hdr.val h1 h2
     exact ⟨.ct2Sampled st.uc.epoch.val (absAuth st.uc.auth) (ct2Encoder P st.uc.epoch.val
       (absAuth st.uc.auth) st.uc.es.val st.uc.ct1.val st.uc.hdr.val m.val),
-      by simp only [ekStep, h4, Option.map_some, hm,
+      by simp only [ekStep, ekDoneM, id_run, id_bind, id_pure, ct2EncoderM_eq, h4,
+        Option.map_some, hm,
           ↓reduceIte], by simp only [Refines, and_self]⟩
 
 /-- Assume `CodeAgrees P`. If `Ct1Sampled::recv_ek_chunk` on `st` at its epoch and an `EkCt1Ack`
@@ -714,7 +718,7 @@ theorem ct1Sampled_chunk_ack_ok (P : CodePrims) (hP : CodeAgrees P)
   | none =>
     simp only [↓reduceIte, Result.ok.injEq, core.result.Result.Ok.injEq] at h; subst h
     exact ⟨.ct1Acknowledged st.uc.epoch.val (absAuth st.uc.auth) st.uc.hdr.val st.uc.es.val
-      st.uc.ct1.val d', by simp only [ekStep, h4,
+      st.uc.ct1.val d', by simp only [ekStep, ekDoneM, id_run, id_bind, id_pure, ct2EncoderM_eq, h4,
           Option.map_none], by simp only [Refines, and_self]⟩
   | some m =>
     simp only [Result.bind_eq_ok] at h
@@ -730,7 +734,8 @@ theorem ct1Sampled_chunk_ack_ok (P : CodePrims) (hP : CodeAgrees P)
     obtain ⟨rfl, rfl⟩ := ct2_encoder_ok P hP _ _ _ _ _ st.uc.hdr.val h1 h2
     exact ⟨.ct2Sampled st.uc.epoch.val (absAuth st.uc.auth) (ct2Encoder P st.uc.epoch.val
       (absAuth st.uc.auth) st.uc.es.val st.uc.ct1.val st.uc.hdr.val m.val),
-      by simp only [ekStep, h4, Option.map_some, hm,
+      by simp only [ekStep, ekDoneM, id_run, id_bind, id_pure, ct2EncoderM_eq, h4,
+        Option.map_some, hm,
           ↓reduceIte], by simp only [Refines, and_self]⟩
 
 /-- Assume `CodeAgrees P`. If `Ct1Sampled::recv_ek_chunk` on `st` at its epoch and an `Ek` chunk
@@ -744,7 +749,7 @@ theorem ct1Sampled_chunk_noack_ok (P : CodePrims) (hP : CodeAgrees P)
         | none => some (State.ct1Sampled st.uc.epoch.val (absAuth st.uc.auth) st.uc.hdr.val
             st.uc.es.val st.uc.ct1.val st.sending_ct1 (P.addChunk st.receiving_ek c), none)
         | some ek =>
-          if P.ekMatches st.uc.hdr.val ek then
+          if (P.ekMatches st.uc.hdr.val ek).run then
             some (State.ekReceivedCt1Sampled st.uc.epoch.val (absAuth st.uc.auth) st.uc.es.val
               st.uc.ct1.val st.uc.hdr.val ek st.sending_ct1, none)
           else none : Option (State encoding.polynomial.PolyEncoder
@@ -778,6 +783,7 @@ theorem ct1Sampled_chunk_noack_ok (P : CodePrims) (hP : CodeAgrees P)
     subst h
     exact ⟨.ekReceivedCt1Sampled st.uc.epoch.val (absAuth st.uc.auth) st.uc.es.val
       st.uc.ct1.val st.uc.hdr.val m.val st.sending_ct1, by simp only [h4, Option.map_some, hm,
+        id_run,
           ↓reduceIte], by simp only [Refines, and_self]⟩
 
 /-- Assume `CodeAgrees P`. If `uc` has a 960-byte `ct1`, `ct2` has 128 bytes, `mac` has 32 bytes,
@@ -869,7 +875,8 @@ theorem ekSentCt1Received_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
   | none =>
     simp only [Result.ok.injEq, core.result.Result.Ok.injEq] at h; subst h
     exact ⟨.ekSentCt1Received st.uc.epoch.val (absAuth st.uc.auth) st.uc.dk.val st.uc.ct1.val d',
-      by simp only [receiveEq, h3, h4, Option.map_none],
+      by simp only [receiveEq, h3, h4, Option.map_none, receiveEqM, id_run, id_bind, id_pure,
+        Auth.macCtM_eq, Auth.updateM_eq],
       by simp only [Refines, alloc.vec.Vec.length, hct1, add_chunk_pts_needed hadd, hpn, and_self]⟩
   | some m =>
     simp only [Result.bind_eq_ok] at h
@@ -907,7 +914,8 @@ theorem ekSentCt1Received_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
     · have hmc' : m.val.drop 128 = Auth.macCt P (absAuth nh.auth) st.uc.epoch.val
           (st.uc.ct1.val ++ m.val.take 128) := by rw [← hmacv, ← hct2v]; exact hmc
       rw [hna] at hmc'
-      simp only [BraidModel.receiveEq, h3, h4, hcs]
+      simp only [BraidModel.receiveEq, h3, h4, hcs, receiveEqM, id_run, id_bind, id_pure,
+        Auth.macCtM_eq, Auth.updateM_eq]
       have hss' : P.kdfOk (P.decaps st.uc.dk.val st.uc.ct1.val (m.val.take 128))
           st.uc.epoch.val = sec.secret.val := by rw [hss, hct2v]
       simp only [Option.map_some, hss']
@@ -940,7 +948,8 @@ theorem noHeaderReceived_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
   | none =>
     simp only [Result.ok.injEq, core.result.Result.Ok.injEq] at h; subst h
     exact ⟨.noHeaderReceived st.uc.epoch.val (absAuth st.uc.auth) d',
-      by simp only [receiveEq, h3, h4, Option.map_none],
+      by simp only [receiveEq, h3, h4, Option.map_none, receiveEqM, id_run, id_bind, id_pure,
+        Auth.macHdrM_eq],
       by simp only [Refines, alloc.vec.Vec.length, hkey, add_chunk_pts_needed hadd, hpn, and_self]⟩
   | some m =>
     simp only [Result.bind_eq_ok] at h
@@ -984,7 +993,8 @@ theorem noHeaderReceived_chunk_ok (P : CodePrims) (hP : CodeAgrees P)
     rw [← hP.ekSize i1 hi1] at hek
     refine ⟨.headerReceived st.uc.epoch.val (absAuth st.uc.auth) hdr.val
       (P.decoderNew P.ekSize), ?_, ?_⟩
-    · simp only [BraidModel.receiveEq, h3, h4, Option.map_some, hhs, hn64]
+    · simp only [BraidModel.receiveEq, h3, h4, Option.map_some, hhs, hn64, receiveEqM, id_run,
+      id_bind, id_pure, Auth.macHdrM_eq]
       have hmh' : m.val.drop 64 =
           Auth.macHdr P (absAuth st.uc.auth) st.uc.epoch.val (m.val.take 64) := by
         rw [← hmacv, ← hhdrv]; exact (Slice.from_val _ _).symm.trans hmh
@@ -1006,7 +1016,7 @@ theorem recv_refines (P : CodePrims) (hP : CodeAgrees P) (s : States)
     subst hs
     refine ⟨σ, ?_, h⟩
     have hme : (absMsg msg).epoch < σ.epoch := by rw [hep]; exact hlt
-    cases σ <;> simp only [BraidModel.receive, State.epoch] at hme ⊢ <;>
+    cases σ <;> simp only [BraidModel.receive, State.epoch, receiveM, id_run, id_pure] at hme ⊢ <;>
       simp only [gt_iff_lt, Nat.not_lt_of_gt hme, ↓reduceIte, hme, Option.map_none,
           ite_eq_right_iff, Option.some.injEq, Prod.mk.injEq, reduceCtorEq, and_true, imp_false,
           ne_eq]
@@ -1086,7 +1096,8 @@ theorem recv_refines (P : CodePrims) (hP : CodeAgrees P) (s : States)
           simp only [Result.ok.injEq, core.result.Result.Ok.injEq] at hs; subst hs
           refine ⟨.headerSent st.uc.epoch.val (absAuth st.uc.auth) st.uc.dk.val d'
             st.sending_ek, ?_, ?_⟩
-          · simp only [receiveEq, absMsg, h3, h4, Option.map_none]
+          · simp only [receiveEq, absMsg, h3, h4, Option.map_none, receiveEqM, id_run, id_bind,
+            id_pure]
           · simp only [Refines, add_chunk_pts_needed hadd, hpn, and_self]
         | some m =>
           simp only [Result.bind_eq_ok] at hr
@@ -1100,7 +1111,8 @@ theorem recv_refines (P : CodePrims) (hP : CodeAgrees P) (s : States)
             rw [decoded_message_length ho, add_chunk_pts_needed hadd, hpn]
           refine ⟨.ct1Received st.uc.epoch.val (absAuth st.uc.auth) st.uc.dk.val m.val
             st.sending_ek, ?_, ?_⟩
-          · simp only [receiveEq, absMsg, h3, h4, Option.map_some, Option.map_none]
+          · simp only [receiveEq, absMsg, h3, h4, Option.map_some, Option.map_none, receiveEqM,
+            id_run, id_bind, id_pure]
           · simp only [Refines, alloc.vec.Vec.length, hml, and_self]
       case pos.EkReceivedCt1Sampled.ekReceivedCt1Sampled.EkCt1Ack st e a es ct1 hdr ek enc c =>
         obtain ⟨rfl, rfl, rfl, rfl, rfl, rfl⟩ := h
@@ -1187,7 +1199,8 @@ theorem recv_refines (P : CodePrims) (hP : CodeAgrees P) (s : States)
       refine ⟨σ, ?_, h⟩
       have hr := receiveEq_of_not_expects P h hx
       have hme : (absMsg msg).epoch = σ.epoch := by rw [hep, ← heq]; rfl
-      cases σ <;> simp only [BraidModel.receive, State.epoch] at hme ⊢ <;>
+      cases σ <;> simp only [BraidModel.receive, State.epoch, receiveM, id_run, id_pure,
+        receiveEqM_eq] at hme ⊢ <;>
         simp only [hme, gt_iff_lt, lt_self_iff_false, ↓reduceIte, hr, Option.map_none,
           Nat.left_eq_add, one_ne_zero]
   · by_cases hn : ∃ st, s = .Ct2Sampled st ∧ msg.epoch.val = st.uc.epoch.val + 1
@@ -1198,7 +1211,7 @@ theorem recv_refines (P : CodePrims) (hP : CodeAgrees P) (s : States)
       cases σ <;> simp only [Refines] at h
       obtain ⟨rfl, rfl, -⟩ := h
       refine ⟨.keysUnsampled (st.uc.epoch.val + 1) (absAuth st.uc.auth), ?_, ?_⟩
-      · simp only [receive, absMsg, hn, ↓reduceIte, Option.map_none]
+      · simp only [receive, absMsg, hn, ↓reduceIte, Option.map_none, receiveM, id_run, id_pure]
       · simp only [Refines, hn, and_self]
     · rw [recv_of_gt s msg hgt (fun st hst hm => hn ⟨st, hst, hm⟩)] at hs
       simp only [ok.injEq, reduceCtorEq] at hs

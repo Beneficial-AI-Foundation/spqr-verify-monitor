@@ -1,0 +1,45 @@
+From 7110d3f70d65a6b3b6796cfeb891700399ffbf6b Mon Sep 17 00:00:00 2001
+From: astefano <lacramioara.astefanoaei@gmail.com>
+Date: Thu, 19 Nov 2026 20:57:49 +0100
+Subject: [PATCH] Demo mutant: MAC only ct2 instead of ct1 || ct2
+
+Both parties pass only ct2 to the ciphertext MAC, so ct1 is omitted from
+the MAC input. The spec (ML-KEM Braid section 2.5) MACs ct1 || ct2. Both
+sides make the same slip, so they still agree and the test suite passes.
+This branch is not for merging.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/v1/unchunked/send_ct.rs | 2 +-
+ src/v1/unchunked/send_ek.rs | 2 +-
+ 2 files changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/src/v1/unchunked/send_ct.rs b/src/v1/unchunked/send_ct.rs
+index a568ef0..01887f7 100644
+--- a/src/v1/unchunked/send_ct.rs
++++ b/src/v1/unchunked/send_ct.rs
+@@ -190,7 +190,7 @@ pub fn send_ct2(
+         } = self;
+         let ct2 = incremental_mlkem768::encaps2(&ek, &es);
+         ct1.extend_from_slice(&ct2);
+-        let mac = auth.mac_ct(epoch, &ct1);
++        let mac = auth.mac_ct(epoch, &ct2);
+         (Ct2Sent { epoch, auth }, ct2, mac)
+     }
+ }
+diff --git a/src/v1/unchunked/send_ek.rs b/src/v1/unchunked/send_ek.rs
+index cb3d9aa..fe91806 100644
+--- a/src/v1/unchunked/send_ek.rs
++++ b/src/v1/unchunked/send_ek.rs
+@@ -157,7 +157,7 @@ pub fn recv_ct2(
+ 
+         auth.update(epoch, &ss);
+         ct1.extend_from_slice(&ct2);
+-        auth.verify_ct(epoch, &ct1, &mac)?;
++        auth.verify_ct(epoch, &ct2, &mac)?;
+         hax_lib::assume!(epoch < u64::MAX);
+         Ok((
+             send_ct::NoHeaderReceived {
+-- 
+2.56.0
+

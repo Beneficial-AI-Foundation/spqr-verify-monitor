@@ -136,6 +136,8 @@ impl HeaderSent {
             mut receiving_ct1,
         } = self;
         receiving_ct1.add_chunk(chunk);
+        #[cfg(feature = "monitor")]
+        crate::monitor::decoded(&receiving_ct1);
         if let Some(decoded) = receiving_ct1.decoded_message() {
             let uc = uc.recv_ct1(epoch, decoded);
             HeaderSentRecvChunk::Done(Ct1Received { uc, sending_ek })
@@ -203,6 +205,8 @@ impl EkSentCt1Received {
             mut receiving_ct2,
         } = self;
         receiving_ct2.add_chunk(chunk);
+        #[cfg(feature = "monitor")]
+        crate::monitor::decoded(&receiving_ct2);
         if let Some(ct2) = receiving_ct2.decoded_message() {
             // hax 0.3.7 does not model Vec::split_off.
             let mac: authenticator::Mac =

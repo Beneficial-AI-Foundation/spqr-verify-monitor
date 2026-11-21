@@ -25,7 +25,14 @@ pub struct Keys {
     pub hdr: Header,
 }
 
+#[cfg_attr(feature = "monitor", allow(unreachable_code))]
 pub fn ek_matches_header(ek: &EncapsulationKey, hdr: &Header) -> bool {
+    #[cfg(feature = "monitor")]
+    return crate::monitor::ek_matches_header(
+        ek,
+        hdr,
+        incremental::validate_pk_bytes(hdr, ek).is_ok(),
+    );
     incremental::validate_pk_bytes(hdr, ek).is_ok()
 }
 
@@ -35,6 +42,15 @@ pub fn generate<R: Rng + CryptoRng>(rng: &mut R) -> Keys {
     let mut randomness = [0u8; libcrux_ml_kem::KEY_GENERATION_SEED_SIZE];
     rng.fill_bytes(&mut randomness);
     let k = incremental::KeyPairCompressedBytes::from_seed(randomness);
+    #[cfg(feature = "monitor")]
+    crate::monitor::generate(
+        &randomness,
+        &Keys {
+            hdr: k.pk1().to_vec(),
+            ek: k.pk2().to_vec(),
+            dk: k.sk().to_vec(),
+        },
+    );
     Keys {
         hdr: k.pk1().to_vec(),
         ek: k.pk2().to_vec(),
@@ -56,6 +72,10 @@ pub fn encaps1<R: Rng + CryptoRng>(
     let ct1 = incremental::encapsulate1(hdr.as_slice(), randomness, &mut state, &mut ss);
     hax_lib::assume!(ct1.is_ok());
     hax_lib::assume!(state.len() == 2080 && ss.len() == 32);
+    #[cfg(feature = "monitor")]
+    if let Ok(c) = ct1.as_ref() {
+        crate::monitor::encaps1(hdr, &randomness, &c.value, &state, &ss);
+    }
     (
         ct1.expect("should only fail based on sizes, all sizes should be correct")
             .value
@@ -69,12 +89,16 @@ pub fn encaps1<R: Rng + CryptoRng>(
 #[hax_lib::requires(es.len() == 2080 && ek.len() == 1152)]
 #[hax_lib::ensures(|result| result.len() == 128)]
 pub fn encaps2(ek: &EncapsulationKey, es: &EncapsulationState) -> Ciphertext2 {
+    #[cfg(feature = "monitor")]
+    let es_arg = es.clone();
     let maybe_fix = potentially_fix_state_incorrectly_encoded_by_libcrux_issue_1275(es);
     let es = maybe_fix.as_ref().unwrap_or(es);
     let ct2 = incremental::encapsulate2(
         es.as_slice().try_into().expect("size should be correct"),
         ek.as_slice().try_into().expect("size should be correct"),
     );
+    #[cfg(feature = "monitor")]
+    crate::monitor::encaps2(ek, &es_arg, &ct2.value);
     ct2.value.to_vec()
 }
 
@@ -153,6 +177,7 @@ fn flip_endianness_of_encapsulation_state(es: &EncapsulationState) -> Encapsulat
 }
 
 /// Decapsulate ciphertext to get shared secret.
+#[cfg_attr(feature = "monitor", allow(unreachable_code))]
 #[hax_lib::requires(ct1.len() == 960 && ct2.len() == 128 && dk.len() == 2400)]
 #[hax_lib::ensures(|result| result.len() == 32)]
 pub fn decaps(dk: &DecapsulationKey, ct1: &Ciphertext1, ct2: &Ciphertext2) -> Secret {
@@ -162,6 +187,18 @@ pub fn decaps(dk: &DecapsulationKey, ct1: &Ciphertext1, ct2: &Ciphertext2) -> Se
     let ct2 = incremental::Ciphertext2 {
         value: ct2.as_slice().try_into().expect("size should be correct"),
     };
+    #[cfg(feature = "monitor")]
+    return crate::monitor::decaps(
+        dk,
+        &ct1.value,
+        &ct2.value,
+        incremental::decapsulate_compressed_key(
+            dk.as_slice().try_into().expect("size should be correct"),
+            &ct1,
+            &ct2,
+        )
+        .to_vec(),
+    );
     incremental::decapsulate_compressed_key(
         dk.as_slice().try_into().expect("size should be correct"),
         &ct1,

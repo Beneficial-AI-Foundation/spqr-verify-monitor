@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta><declaration>// ML-KEM Braid (Model.lean) over abstract data. See scripts/uppaal/README.md.
+const bool TRACE = false;   // an observer drives the steps
+const bool CHECK_DELIVERY = true; // receive only sent messages
+
+const int A = 0;
+const int B = 1;
+const int EMAX = 3;
+typedef int[0, EMAX + 1] epoch_t;
+
+// states (Label)
+const int KU = 0;  // KeysUnsampled
+const int KS = 1;  // KeysSampled
+const int HS = 2;  // HeaderSent
+const int C1R = 3;  // Ct1Received
+const int ESC1R = 4;  // EkSentCt1Received
+const int NHR = 5;  // NoHeaderReceived
+const int HR = 6;  // HeaderReceived
+const int C1S = 7;  // Ct1Sampled
+const int ERC1S = 8;  // EkReceivedCt1Sampled
+const int C1A = 9;  // Ct1Acknowledged
+const int C2S = 10;  // Ct2Sampled
+// receive outcomes besides a target state
+const int STAY = -1;     // state unchanged
+const int FAIL = -2;     // Receive() returns none
+const int INVALID = -3;  // no model step (token does not fit)
+
+// payload kinds (Payload)
+const int K_NONE = 0;
+const int K_HDR = 1;
+const int K_EK = 2;
+const int K_EKCT1ACK = 3;
+const int K_CT1ACK = 4;
+const int K_CT1 = 5;
+const int K_CT2 = 6;
+typedef int[0, 6] kind_t;
+
+// data tokens
+const int T_NONE = 0;
+const int T_PART = 1;
+const int T_OK = 2;
+const int T_BAD = 3;
+const int T_MISS = 4;
+typedef int[0, 4] tok_t;
+
+// step directions
+const int SEND = 0;
+const int RECV = 1;
+const int RECV_ERR = 2;
+
+// party state, readable by the observer
+int st[2] = {KU, NHR};
+epoch_t ep[2] = {1, 1};
+epoch_t key[2];          // epoch of the key output by the last step, 0 for none
+
+// network: which (epoch, kind) each party sent
+bool sent[2][EMAX + 2][7];
+int[0, 1] d_p;           // message being delivered
+epoch_t d_ep;
+kind_t d_kind;
+
+// the step the observer expects next
+bool pending;
+int[0, 1] e_party;
+int[0, 2] e_dir;
+kind_t e_kind;
+epoch_t e_ep;
+tok_t e_tok;
+int matched;             // number of trace steps matched
+
+// one channel per message kind for sends, one delivery channel per receiver
+chan none_[2], hdr[2], ek[2], ekct1ack[2], ct1ack[2], ct1[2], ct2[2];
+chan deliver[2];
+
+// Receive() (with receiveEq) on the abstract state. t is the data token.
+int next(int l, int e, int me, int mk, int t) {
+    if (l == C2S) {
+        if (me == e + 1) return t == T_NONE ? KU : INVALID;     // (13)
+        if (me &gt; e) return t == T_NONE ? FAIL : INVALID;
+        return t == T_NONE ? STAY : INVALID;
+    }
+    if (me &gt; e) return t == T_NONE ? FAIL : INVALID;
+    if (me &lt; e) return t == T_NONE ? STAY : INVALID;
+    if (l == KS &amp;&amp; mk == K_CT1) return t == T_NONE ? HS : INVALID;            // (2)
+    if (l == HS &amp;&amp; mk == K_CT1)                                                 // (3)
+        return t == T_OK ? C1R : t == T_PART ? STAY : INVALID;
+    if (l == C1R &amp;&amp; mk == K_CT2) return t == T_NONE ? ESC1R : INVALID;        // (4)
+    if (l == ESC1R &amp;&amp; mk == K_CT2)                                              // (5) MAC
+        return t == T_OK ? NHR : t == T_PART ? STAY : t == T_BAD ? FAIL : INVALID;
+    if (l == NHR &amp;&amp; mk == K_HDR)                                                // (6) MAC
+        return t == T_OK ? HR : t == T_PART ? STAY : t == T_BAD ? FAIL : INVALID;
+    if (l == C1S &amp;&amp; mk == K_EK)                                                 // (10) ek
+        return t == T_OK ? ERC1S : t == T_PART ? STAY : t == T_BAD ? FAIL : INVALID;
+    if (l == C1S &amp;&amp; mk == K_EKCT1ACK)                                           // (8), (9)
+        return t == T_PART ? C1A : t == T_OK ? C2S : t == T_BAD ? FAIL : INVALID;
+    if (l == ERC1S &amp;&amp; (mk == K_EKCT1ACK || mk == K_CT1ACK))                     // (12) MAC
+        return t == T_OK ? C2S : INVALID;
+    if (l == C1A &amp;&amp; (mk == K_EKCT1ACK || mk == K_EK))                           // (11)
+        return t == T_OK ? C2S : t == T_PART ? STAY : t == T_BAD ? FAIL : INVALID;
+    return t == T_NONE ? STAY : INVALID;
+}
+
+// the token of this step: the trace's, or any non-failing one in the free model
+bool tokOk(int t) {
+    return TRACE ? t == e_tok : (t == T_NONE || t == T_PART || t == T_OK);
+}
+
+// a send of kind k by party p, with token t
+bool canSend(int p, int k, int t) {
+    return TRACE ? (pending &amp;&amp; e_party == p &amp;&amp; e_dir == SEND &amp;&amp; e_kind == k
+                    &amp;&amp; e_ep == ep[p] &amp;&amp; e_tok == t)
+                 : true;
+}
+
+// a receive by party p with outcome n (state, STAY or FAIL)
+bool canRecv(int p, int n) {
+    if (n == INVALID) return false;
+    if (!TRACE) return true;
+    return n == FAIL ? e_dir == RECV_ERR : e_dir == RECV;
+}
+
+void done(int p) {
+    pending = false;
+}
+
+// the observer announces the next step of the trace
+void expect(int p, int d, int k, int e, int t) {
+    e_party = p; e_dir = d; e_kind = k; e_ep = e; e_tok = t; pending = true;
+}
+
+// the observer checks the state after the step
+bool got(int p, int l, int e, int k) {
+    return !pending &amp;&amp; st[p] == l &amp;&amp; ep[p] == e &amp;&amp; key[p] == k;
+}
+</declaration><template><name x="5" y="5">Party</name><parameter>const int[0, 1] p</parameter><declaration>// One party. The initial location follows st[p]: Alice KU, Bob NHR.
+
+// send of kind k with data token t
+bool sends(int k, int t) { return canSend(p, k, t); }
+
+// receive of the delivered message that leaves state l unchanged, or fails
+bool stays(int l, int t) {
+    int n = next(l, ep[p], d_ep, d_kind, t);
+    return tokOk(t) &amp;&amp; (n == STAY || n == FAIL) &amp;&amp; canRecv(p, n);
+}
+
+// receive of the delivered message that moves state l to l2
+bool goes(int l, int l2, int t) {
+    return tokOk(t) &amp;&amp; next(l, ep[p], d_ep, d_kind, t) == l2 &amp;&amp; canRecv(p, l2);
+}
+
+// enter state l, output the key of epoch k (0 for none), add inc to the epoch
+void move(int l, int k, int inc) {
+    st[p] = l; key[p] = k; ep[p] = ep[p] + inc; done(p);
+}
+</declaration><location id="KU" x="0" y="0"><name x="12" y="-30">KeysUnsampled</name></location><location id="KS" x="300" y="0"><name x="312" y="-30">KeysSampled</name></location><location id="HS" x="600" y="0"><name x="612" y="-30">HeaderSent</name></location><location id="C1R" x="900" y="0"><name x="912" y="-30">Ct1Received</name></location><location id="ESC1R" x="1200" y="0"><name x="1212" y="-30">EkSentCt1Received</name></location><location id="NHR" x="1320" y="230"><name x="1332" y="200">NoHeaderReceived</name></location><location id="HR" x="1200" y="460"><name x="1212" y="430">HeaderReceived</name></location><location id="C1S" x="900" y="460"><name x="912" y="430">Ct1Sampled</name></location><location id="ERC1S" x="600" y="330"><name x="612" y="300">EkReceivedCt1Sampled</name></location><location id="C1A" x="600" y="590"><name x="612" y="560">Ct1Acknowledged</name></location><location id="C2S" x="300" y="460"><name x="312" y="430">Ct2Sampled</name></location><location id="Init" x="-150" y="230"><name x="-190" y="200">Init</name><committed/></location><init ref="Init"/><transition><source ref="Init"/><target ref="KU"/><label kind="guard" x="-170" y="90">st[p] == KU</label></transition><transition><source ref="Init"/><target ref="NHR"/><label kind="guard" x="400" y="705">st[p] == NHR</label><nail x="-150" y="700"/><nail x="1320" y="700"/></transition><transition><source ref="KU"/><target ref="KS"/><label kind="guard" x="80" y="10">sends(K_HDR, T_OK)</label><label kind="synchronisation" x="80" y="27">hdr[p]!</label><label kind="assignment" x="80" y="44">move(KS, 0, 0)</label><label kind="comments" x="80" y="61">send (1)</label></transition><transition><source ref="KU"/><target ref="KU"/><label kind="select" x="-60" y="60">t : tok_t</label><label kind="guard" x="-60" y="77">stays(KU, t)</label><label kind="synchronisation" x="-60" y="94">deliver[p]?</label><label kind="assignment" x="-60" y="111">move(st[p], 0, 0)</label><nail x="-25" y="55"/><nail x="25" y="55"/></transition><transition><source ref="KS"/><target ref="KS"/><label kind="guard" x="240" y="-110">sends(K_HDR, T_NONE)</label><label kind="synchronisation" x="240" y="-93">hdr[p]!</label><label kind="assignment" x="240" y="-76">move(KS, 0, 0)</label><nail x="275" y="-55"/><nail x="325" y="-55"/></transition><transition><source ref="KS"/><target ref="KS"/><label kind="select" x="240" y="60">t : tok_t</label><label kind="guard" x="240" y="77">stays(KS, t)</label><label kind="synchronisation" x="240" y="94">deliver[p]?</label><label kind="assignment" x="240" y="111">move(st[p], 0, 0)</label><nail x="275" y="55"/><nail x="325" y="55"/></transition><transition><source ref="HS"/><target ref="HS"/><label kind="guard" x="540" y="-110">sends(K_EK, T_NONE)</label><label kind="synchronisation" x="540" y="-93">ek[p]!</label><label kind="assignment" x="540" y="-76">move(HS, 0, 0)</label><nail x="575" y="-55"/><nail x="625" y="-55"/></transition><transition><source ref="HS"/><target ref="HS"/><label kind="select" x="540" y="60">t : tok_t</label><label kind="guard" x="540" y="77">stays(HS, t)</label><label kind="synchronisation" x="540" y="94">deliver[p]?</label><label kind="assignment" x="540" y="111">move(st[p], 0, 0)</label><nail x="575" y="55"/><nail x="625" y="55"/></transition><transition><source ref="C1R"/><target ref="C1R"/><label kind="guard" x="840" y="-110">sends(K_EKCT1ACK, T_NONE)</label><label kind="synchronisation" x="840" y="-93">ekct1ack[p]!</label><label kind="assignment" x="840" y="-76">move(C1R, 0, 0)</label><nail x="875" y="-55"/><nail x="925" y="-55"/></transition><transition><source ref="C1R"/><target ref="C1R"/><label kind="select" x="840" y="60">t : tok_t</label><label kind="guard" x="840" y="77">stays(C1R, t)</label><label kind="synchronisation" x="840" y="94">deliver[p]?</label><label kind="assignment" x="840" y="111">move(st[p], 0, 0)</label><nail x="875" y="55"/><nail x="925" y="55"/></transition><transition><source ref="ESC1R"/><target ref="ESC1R"/><label kind="guard" x="1140" y="-110">sends(K_CT1ACK, T_NONE)</label><label kind="synchronisation" x="1140" y="-93">ct1ack[p]!</label><label kind="assignment" x="1140" y="-76">move(ESC1R, 0, 0)</label><nail x="1175" y="-55"/><nail x="1225" y="-55"/></transition><transition><source ref="ESC1R"/><target ref="ESC1R"/><label kind="select" x="1140" y="60">t : tok_t</label><label kind="guard" x="1140" y="77">stays(ESC1R, t)</label><label kind="synchronisation" x="1140" y="94">deliver[p]?</label><label kind="assignment" x="1140" y="111">move(st[p], 0, 0)</label><nail x="1175" y="55"/><nail x="1225" y="55"/></transition><transition><source ref="NHR"/><target ref="NHR"/><label kind="guard" x="1350" y="100">sends(K_NONE, T_NONE)</label><label kind="synchronisation" x="1350" y="117">none_[p]!</label><label kind="assignment" x="1350" y="134">move(NHR, 0, 0)</label><nail x="1375" y="205"/><nail x="1375" y="255"/></transition><transition><source ref="NHR"/><target ref="NHR"/><label kind="select" x="1105" y="200">t : tok_t</label><label kind="guard" x="1105" y="217">stays(NHR, t)</label><label kind="synchronisation" x="1105" y="234">deliver[p]?</label><label kind="assignment" x="1105" y="251">move(st[p], 0, 0)</label><nail x="1265" y="205"/><nail x="1265" y="255"/></transition><transition><source ref="HR"/><target ref="C1S"/><label kind="guard" x="1000" y="390">sends(K_CT1, T_NONE)</label><label kind="synchronisation" x="1000" y="407">ct1[p]!</label><label kind="assignment" x="1000" y="424">move(C1S, ep[p], 0)</label><label kind="comments" x="1000" y="441">send (7)</label></transition><transition><source ref="HR"/><target ref="HR"/><label kind="select" x="1140" y="520">t : tok_t</label><label kind="guard" x="1140" y="537">stays(HR, t)</label><label kind="synchronisation" x="1140" y="554">deliver[p]?</label><label kind="assignment" x="1140" y="571">move(st[p], 0, 0)</label><nail x="1175" y="515"/><nail x="1225" y="515"/></transition><transition><source ref="C1S"/><target ref="C1S"/><label kind="guard" x="910" y="350">sends(K_CT1, T_NONE)</label><label kind="synchronisation" x="910" y="367">ct1[p]!</label><label kind="assignment" x="910" y="384">move(C1S, 0, 0)</label><nail x="875" y="405"/><nail x="925" y="405"/></transition><transition><source ref="C1S"/><target ref="C1S"/><label kind="select" x="880" y="520">t : tok_t</label><label kind="guard" x="880" y="537">stays(C1S, t)</label><label kind="synchronisation" x="880" y="554">deliver[p]?</label><label kind="assignment" x="880" y="571">move(st[p], 0, 0)</label><nail x="875" y="515"/><nail x="925" y="515"/></transition><transition><source ref="ERC1S"/><target ref="ERC1S"/><label kind="guard" x="540" y="220">sends(K_CT1, T_NONE)</label><label kind="synchronisation" x="540" y="237">ct1[p]!</label><label kind="assignment" x="540" y="254">move(ERC1S, 0, 0)</label><nail x="575" y="275"/><nail x="625" y="275"/></transition><transition><source ref="ERC1S"/><target ref="ERC1S"/><label kind="select" x="600" y="390">t : tok_t</label><label kind="guard" x="600" y="407">stays(ERC1S, t)</label><label kind="synchronisation" x="600" y="424">deliver[p]?</label><label kind="assignment" x="600" y="441">move(st[p], 0, 0)</label><nail x="575" y="385"/><nail x="625" y="385"/></transition><transition><source ref="C1A"/><target ref="C1A"/><label kind="guard" x="370" y="480">sends(K_NONE, T_NONE)</label><label kind="synchronisation" x="370" y="497">none_[p]!</label><label kind="assignment" x="370" y="514">move(C1A, 0, 0)</label><nail x="575" y="535"/><nail x="625" y="535"/></transition><transition><source ref="C1A"/><target ref="C1A"/><label kind="select" x="600" y="650">t : tok_t</label><label kind="guard" x="600" y="667">stays(C1A, t)</label><label kind="synchronisation" x="600" y="684">deliver[p]?</label><label kind="assignment" x="600" y="701">move(st[p], 0, 0)</label><nail x="575" y="645"/><nail x="625" y="645"/></transition><transition><source ref="C2S"/><target ref="C2S"/><label kind="guard" x="180" y="350">sends(K_CT2, T_NONE)</label><label kind="synchronisation" x="180" y="367">ct2[p]!</label><label kind="assignment" x="180" y="384">move(C2S, 0, 0)</label><nail x="275" y="405"/><nail x="325" y="405"/></transition><transition><source ref="C2S"/><target ref="C2S"/><label kind="select" x="240" y="520">t : tok_t</label><label kind="guard" x="240" y="537">stays(C2S, t)</label><label kind="synchronisation" x="240" y="554">deliver[p]?</label><label kind="assignment" x="240" y="571">move(st[p], 0, 0)</label><nail x="275" y="515"/><nail x="325" y="515"/></transition><transition><source ref="KS"/><target ref="HS"/><label kind="select" x="460" y="-90">t : tok_t</label><label kind="guard" x="460" y="-73">goes(KS, HS, t)</label><label kind="synchronisation" x="460" y="-56">deliver[p]?</label><label kind="assignment" x="460" y="-39">move(HS, 0, 0)</label><label kind="comments" x="460" y="-22">recv (2)</label></transition><transition><source ref="HS"/><target ref="C1R"/><label kind="select" x="760" y="-90">t : tok_t</label><label kind="guard" x="760" y="-73">goes(HS, C1R, t)</label><label kind="synchronisation" x="760" y="-56">deliver[p]?</label><label kind="assignment" x="760" y="-39">move(C1R, 0, 0)</label><label kind="comments" x="760" y="-22">recv (3)</label></transition><transition><source ref="C1R"/><target ref="ESC1R"/><label kind="select" x="1060" y="-90">t : tok_t</label><label kind="guard" x="1060" y="-73">goes(C1R, ESC1R, t)</label><label kind="synchronisation" x="1060" y="-56">deliver[p]?</label><label kind="assignment" x="1060" y="-39">move(ESC1R, 0, 0)</label><label kind="comments" x="1060" y="-22">recv (4)</label></transition><transition><source ref="ESC1R"/><target ref="NHR"/><label kind="select" x="1260" y="10">t : tok_t</label><label kind="guard" x="1260" y="27">goes(ESC1R, NHR, t)</label><label kind="synchronisation" x="1260" y="44">deliver[p]?</label><label kind="assignment" x="1260" y="61">move(NHR, ep[p], 1)</label><label kind="comments" x="1260" y="78">recv (5) MAC</label></transition><transition><source ref="NHR"/><target ref="HR"/><label kind="select" x="1290" y="350">t : tok_t</label><label kind="guard" x="1290" y="367">goes(NHR, HR, t)</label><label kind="synchronisation" x="1290" y="384">deliver[p]?</label><label kind="assignment" x="1290" y="401">move(HR, 0, 0)</label><label kind="comments" x="1290" y="418">recv (6) MAC</label></transition><transition><source ref="C1S"/><target ref="C1A"/><label kind="select" x="770" y="545">t : tok_t</label><label kind="guard" x="770" y="562">goes(C1S, C1A, t)</label><label kind="synchronisation" x="770" y="579">deliver[p]?</label><label kind="assignment" x="770" y="596">move(C1A, 0, 0)</label><label kind="comments" x="770" y="613">recv (8)</label></transition><transition><source ref="C1S"/><target ref="C2S"/><label kind="select" x="640" y="465">t : tok_t</label><label kind="guard" x="640" y="482">goes(C1S, C2S, t)</label><label kind="synchronisation" x="640" y="499">deliver[p]?</label><label kind="assignment" x="640" y="516">move(C2S, 0, 0)</label><label kind="comments" x="640" y="533">recv (9) ek, MAC</label></transition><transition><source ref="C1S"/><target ref="ERC1S"/><label kind="select" x="760" y="300">t : tok_t</label><label kind="guard" x="760" y="317">goes(C1S, ERC1S, t)</label><label kind="synchronisation" x="760" y="334">deliver[p]?</label><label kind="assignment" x="760" y="351">move(ERC1S, 0, 0)</label><label kind="comments" x="760" y="368">recv (10) ek</label></transition><transition><source ref="C1A"/><target ref="C2S"/><label kind="select" x="330" y="600">t : tok_t</label><label kind="guard" x="330" y="617">goes(C1A, C2S, t)</label><label kind="synchronisation" x="330" y="634">deliver[p]?</label><label kind="assignment" x="330" y="651">move(C2S, 0, 0)</label><label kind="comments" x="330" y="668">recv (11) ek, MAC</label></transition><transition><source ref="ERC1S"/><target ref="C2S"/><label kind="select" x="330" y="270">t : tok_t</label><label kind="guard" x="330" y="287">goes(ERC1S, C2S, t)</label><label kind="synchronisation" x="330" y="304">deliver[p]?</label><label kind="assignment" x="330" y="321">move(C2S, 0, 0)</label><label kind="comments" x="330" y="338">recv (12) MAC</label></transition><transition><source ref="C2S"/><target ref="KU"/><label kind="select" x="170" y="230">t : tok_t</label><label kind="guard" x="170" y="247">goes(C2S, KU, t)</label><label kind="synchronisation" x="170" y="264">deliver[p]?</label><label kind="assignment" x="170" y="281">move(KU, 0, 1)</label><label kind="comments" x="170" y="298">recv (13)</label><nail x="150" y="230"/></transition></template><template><name x="5" y="5">Net</name><declaration>// delivers any message that was sent: loss, duplication and reordering are allowed
+bool mayDeliver(int p, int e, int k) {
+    return (!CHECK_DELIVERY || (TRACE &amp;&amp; k == K_NONE) || sent[1 - p][e][k])
+        &amp;&amp; (!TRACE || (pending &amp;&amp; e_party == p &amp;&amp; e_dir != SEND
+                       &amp;&amp; e_ep == e &amp;&amp; e_kind == k));
+}</declaration><location id="Idle" x="0" y="0"><name x="-20" y="-30">Idle</name></location><location id="Lnone" x="520" y="-270"><name x="540" y="-280">deliver_none</name><committed/></location><location id="Lhdr" x="520" y="-180"><name x="540" y="-190">deliver_hdr</name><committed/></location><location id="Lek" x="520" y="-90"><name x="540" y="-100">deliver_ek</name><committed/></location><location id="Lekct1ack" x="520" y="0"><name x="540" y="-10">deliver_ekct1ack</name><committed/></location><location id="Lct1ack" x="520" y="90"><name x="540" y="80">deliver_ct1ack</name><committed/></location><location id="Lct1" x="520" y="180"><name x="540" y="170">deliver_ct1</name><committed/></location><location id="Lct2" x="520" y="270"><name x="540" y="260">deliver_ct2</name><committed/></location><init ref="Idle"/><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="-60" y="155">p : int[0, 1]</label><label kind="synchronisation" x="-60" y="172">none_[p]?</label><label kind="assignment" x="-60" y="189">sent[p][ep[p]][K_NONE] = true</label><nail x="-15" y="150"/><nail x="15" y="150"/></transition><transition><source ref="Idle"/><target ref="Lnone"/><label kind="select" x="250" y="-315">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="-298">mayDeliver(p, e, K_NONE)</label><label kind="assignment" x="250" y="-281">d_p = p, d_ep = e, d_kind = K_NONE</label><nail x="300" y="-290"/></transition><transition><source ref="Lnone"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="-250"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="-177" y="98">p : int[0, 1]</label><label kind="synchronisation" x="-177" y="115">hdr[p]?</label><label kind="assignment" x="-177" y="132">sent[p][ep[p]][K_HDR] = true</label><nail x="-132" y="93"/><nail x="-102" y="93"/></transition><transition><source ref="Idle"/><target ref="Lhdr"/><label kind="select" x="250" y="-225">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="-208">mayDeliver(p, e, K_HDR)</label><label kind="assignment" x="250" y="-191">d_p = p, d_ep = e, d_kind = K_HDR</label><nail x="300" y="-200"/></transition><transition><source ref="Lhdr"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="-160"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="-206" y="-28">p : int[0, 1]</label><label kind="synchronisation" x="-206" y="-11">ek[p]?</label><label kind="assignment" x="-206" y="6">sent[p][ep[p]][K_EK] = true</label><nail x="-161" y="-33"/><nail x="-131" y="-33"/></transition><transition><source ref="Idle"/><target ref="Lek"/><label kind="select" x="250" y="-135">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="-118">mayDeliver(p, e, K_EK)</label><label kind="assignment" x="250" y="-101">d_p = p, d_ep = e, d_kind = K_EK</label><nail x="300" y="-110"/></transition><transition><source ref="Lek"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="-70"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="-125" y="-130">p : int[0, 1]</label><label kind="synchronisation" x="-125" y="-113">ekct1ack[p]?</label><label kind="assignment" x="-125" y="-96">sent[p][ep[p]][K_EKCT1ACK] = true</label><nail x="-80" y="-135"/><nail x="-50" y="-135"/></transition><transition><source ref="Idle"/><target ref="Lekct1ack"/><label kind="select" x="250" y="-45">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="-28">mayDeliver(p, e, K_EKCT1ACK)</label><label kind="assignment" x="250" y="-11">d_p = p, d_ep = e, d_kind = K_EKCT1ACK</label><nail x="300" y="-20"/></transition><transition><source ref="Lekct1ack"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="20"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="5" y="-130">p : int[0, 1]</label><label kind="synchronisation" x="5" y="-113">ct1ack[p]?</label><label kind="assignment" x="5" y="-96">sent[p][ep[p]][K_CT1ACK] = true</label><nail x="50" y="-135"/><nail x="80" y="-135"/></transition><transition><source ref="Idle"/><target ref="Lct1ack"/><label kind="select" x="250" y="45">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="62">mayDeliver(p, e, K_CT1ACK)</label><label kind="assignment" x="250" y="79">d_p = p, d_ep = e, d_kind = K_CT1ACK</label><nail x="300" y="70"/></transition><transition><source ref="Lct1ack"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="110"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="86" y="-28">p : int[0, 1]</label><label kind="synchronisation" x="86" y="-11">ct1[p]?</label><label kind="assignment" x="86" y="6">sent[p][ep[p]][K_CT1] = true</label><nail x="131" y="-33"/><nail x="161" y="-33"/></transition><transition><source ref="Idle"/><target ref="Lct1"/><label kind="select" x="250" y="135">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="152">mayDeliver(p, e, K_CT1)</label><label kind="assignment" x="250" y="169">d_p = p, d_ep = e, d_kind = K_CT1</label><nail x="300" y="160"/></transition><transition><source ref="Lct1"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="200"/></transition><transition><source ref="Idle"/><target ref="Idle"/><label kind="select" x="57" y="98">p : int[0, 1]</label><label kind="synchronisation" x="57" y="115">ct2[p]?</label><label kind="assignment" x="57" y="132">sent[p][ep[p]][K_CT2] = true</label><nail x="102" y="93"/><nail x="132" y="93"/></transition><transition><source ref="Idle"/><target ref="Lct2"/><label kind="select" x="250" y="225">p : int[0, 1], e : int[1, EMAX]</label><label kind="guard" x="250" y="242">mayDeliver(p, e, K_CT2)</label><label kind="assignment" x="250" y="259">d_p = p, d_ep = e, d_kind = K_CT2</label><nail x="300" y="250"/></transition><transition><source ref="Lct2"/><target ref="Idle"/><label kind="synchronisation">deliver[d_p]!</label><nail x="340" y="290"/></transition></template><system>Alice = Party(A);
+Bob = Party(B);
+system Alice, Bob, Net;
+</system><queries><query><formula>E&lt;&gt; Alice.Ct2Sampled</formula><comment>Alice reaches Ct2Sampled</comment></query><query><formula>E&lt;&gt; ep[A] == 3 &amp;&amp; ep[B] == 3</formula><comment>both parties reach epoch 3</comment></query><query><formula>A[] (ep[A] &lt;= ep[B] + 1 &amp;&amp; ep[B] &lt;= ep[A] + 1)</formula><comment>the epochs of the parties differ by at most one</comment></query></queries></nta>

@@ -12,6 +12,8 @@ pub mod encoding;
 pub(crate) mod encoding;
 pub(crate) mod incremental_mlkem768;
 pub(crate) mod kdf;
+#[cfg(feature = "monitor")]
+pub(crate) mod monitor;
 pub(crate) mod serialize;
 pub(crate) mod test;
 pub(crate) mod util;

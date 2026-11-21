@@ -1,0 +1,51 @@
+/tmp/spqr-viz/traces-m1/v1.test.chaos.jsonl: 96521 events, 1 session(s)
+  session 1 party A: REJECTED: operation 623 (line 711), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #6: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct)
+  session 1 party B: REJECTED: operation 1256 (line 1428), States::recv in BraidModel.Label.ekSentCt1Received epoch 2, message epoch 2 ct2 #10: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [131]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces-R1-mac-root-key/v1.test.chaos.jsonl: 97054 events, 1 session(s)
+  session 1 party A: REJECTED: operation 609 (line 698), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #12: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 513 (line 594), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #62: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [134]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces-R2-branch/v1.test.chaos.jsonl: 97899 events, 1 session(s)
+  session 1 party A: REJECTED: operation 660 (line 749), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 456 (line 537), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #81: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces-R3-branch/v1.test.chaos.jsonl: 98037 events, 1 session(s)
+  session 1 party A: REJECTED: operation 690 (line 779), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #8: missing primitive value: no hmac call with the key and data of the ciphertext MAC (verify_ct) (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 party B: REJECTED: operation 522 (line 603), States::recv in BraidModel.Label.ct1Acknowledged epoch 1, message epoch 1 ekct1ack #91: missing primitive value: no encaps2 call, or no hmac call with the key and data of the ciphertext MAC, for the ct2 encoder (this operation logged 1 hmac call(s), on other keys or data)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces-R4/v1.test.tamper_chaos.jsonl: 2068 events, 1 session(s)
+  session 1 party A: REJECTED: operation 1737 (line 2000), States::recv in BraidModel.Label.ekSentCt1Received epoch 3, message epoch 3 ct2 #30: the model's Receive() fails, the code accepted
+  session 1 party B: ACCEPTED (902 operations, 3 keys)
+  session 1 delivery: FAILED: line 1350: party B received a message that party A did not send
+  session 1 key agreement: FAILED: epoch 3: the parties' secrets differ
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces-R4/v1.test.tamper_early.jsonl: 1171 events, 2 session(s)
+  session 1 party A: ACCEPTED (300 operations, 0 keys)
+  session 1 party B: ACCEPTED (300 operations, 0 keys)
+  session 1 delivery: FAILED: line 12: party B received a message that party A did not send
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+  session 2 party A: REJECTED: operation 168 (line 1169), States::recv in BraidModel.Label.ekSentCt1Received epoch 1, message epoch 1 ct2 #4: the model's Receive() fails, the code accepted
+  session 2 party B: ACCEPTED (85 operations, 1 keys)
+  session 2 delivery: FAILED: line 1156: party A received a message that party B did not send
+  session 2 key agreement: FAILED: epoch 1: the parties' secrets differ
+  session 2 randomness reuse (outside BraidModel): ok
+/tmp/spqr-viz/traces/v1.test.chaos.jsonl: 96984 events, 1 session(s)
+  session 1 party A: ACCEPTED (42637 operations, 136 keys)
+  session 1 party B: ACCEPTED (42813 operations, 135 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [136]
+  session 1 randomness reuse (outside BraidModel): ok
+SOME CHECKS FAILED

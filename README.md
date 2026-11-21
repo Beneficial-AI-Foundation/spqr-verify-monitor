@@ -8,6 +8,26 @@ of the Rust code produced by [Aeneas](https://github.com/AeneasVerif/aeneas).
 
 Maintained by [The Beneficial AI Foundation](https://www.beneficialaifoundation.org/).
 
+## About this fork
+
+This fork of [Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify](https://github.com/Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify)
+adds a runtime monitor for the SPQR tests. The Rust tests write an event log, and a Lean program
+replays the events of each party through the Braid model. Read [`docs/monitor.md`](./docs/monitor.md)
+for the results and the commands that reproduce them.
+
+The refinement proof `run_refines` is about the Lean translation of the code. In that
+translation, ML-KEM is a hand-written model of FIPS 203, HMAC and HKDF are opaque, 26
+translation patches change the Rust, and the SIMD field multiplication is left out. The monitor
+takes the primitive values from the binary that runs, and checks each executed test step against
+`BraidModel` with those values. It does not check that libcrux meets FIPS 203. Read
+[What the monitor checks that the proofs do not](./docs/monitor.md#what-the-monitor-checks-that-the-proofs-do-not).
+
+The monitor adds hooks to `src/`. The hooks compile only with the cargo feature `monitor`. With
+the feature off, the expanded crate is identical to upstream `main`.
+
+The soundness theorems of the monitor are in `Spqr/Specs/Braid/StateMachine/PartialModel.lean`
+and `Spqr/Specs/Braid/StateMachine/Monitor.lean`.
+
 ## Repository Structure
 
 | Path | Contents |

@@ -42,3 +42,15 @@ root = "Utils.Status"
 # `defaultTargets`, so neither the dummy `@[step]` linter theorems nor the randomized
 [[lean_lib]]
 name = "Tests"
+
+# Runtime monitor: replays event logs of the Rust test harness (feature `monitor`) through
+# `BraidModel`.
+[[lean_lib]]
+name = "Monitor"
+roots = ["Monitor.Main"]
+# `roots` alone does not make `Monitor.Check` and the other modules part of the library.
+globs = ["Monitor.+"]
+
+[[lean_exe]]
+name = "spqr-monitor"
+root = "Monitor.Main"

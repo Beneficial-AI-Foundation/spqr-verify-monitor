@@ -38,6 +38,8 @@ rand_distr = "0.5.1"
 prost-build = "0.14.1"
 
 [features]
+# Writes the runtime-monitor event log (`src/monitor.rs`); off by default and for Charon.
+monitor = []
 proof = []
 test-utils = []
 

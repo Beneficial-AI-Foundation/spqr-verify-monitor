@@ -1,0 +1,119 @@
+/tmp/spqr-traces-tamper-honest/test.messaging_scka.test.onlineoffline_healing.jsonl: 76783 events, 1 session(s)
+  session 1 party A: ACCEPTED (27930 operations, 246 keys)
+  session 1 party B: ACCEPTED (27930 operations, 247 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [247]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/test.messaging_scka.test.pingpong_healing.jsonl: 22931 events, 1 session(s)
+  session 1 party A: ACCEPTED (9803 operations, 40 keys)
+  session 1 party B: ACCEPTED (9800 operations, 39 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [40]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/test.messaging_scka.test.random_balanced_healing.jsonl: 14750 events, 1 session(s)
+  session 1 party A: ACCEPTED (5090 operations, 54 keys)
+  session 1 party B: ACCEPTED (5090 operations, 53 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [54]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/test.messaging_scka.test.random_balanced.jsonl: 14448 events, 1 session(s)
+  session 1 party A: ACCEPTED (5028 operations, 52 keys)
+  session 1 party B: ACCEPTED (5029 operations, 51 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [52]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/test.messaging_scka.test.random_balanced_out_of_order.jsonl: 14541 events, 1 session(s)
+  session 1 party A: ACCEPTED (5066 operations, 52 keys)
+  session 1 party B: ACCEPTED (5065 operations, 51 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [52]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.balanced_healing.jsonl: 14750 events, 1 session(s)
+  session 1 party A: ACCEPTED (5090 operations, 54 keys)
+  session 1 party B: ACCEPTED (5090 operations, 53 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [54]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.chaos.jsonl: 97744 events, 1 session(s)
+  session 1 party A: ACCEPTED (43107 operations, 136 keys)
+  session 1 party B: ACCEPTED (43055 operations, 137 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [137]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.onlineoffline_healing_unidir.jsonl: 77960 events, 1 session(s)
+  session 1 party A: ACCEPTED (28219 operations, 254 keys)
+  session 1 party B: ACCEPTED (28222 operations, 253 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [254]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.random_balanced.jsonl: 14346 events, 1 session(s)
+  session 1 party A: ACCEPTED (4987 operations, 52 keys)
+  session 1 party B: ACCEPTED (4985 operations, 51 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [52]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.random_balanced_out_of_order.jsonl: 14196 events, 1 session(s)
+  session 1 party A: ACCEPTED (4978 operations, 50 keys)
+  session 1 party B: ACCEPTED (4978 operations, 49 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [50]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.random_slow_alex_healing_auth_bidir.jsonl: 13853 events, 1 session(s)
+  session 1 party A: ACCEPTED (5115 operations, 42 keys)
+  session 1 party B: ACCEPTED (5116 operations, 43 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [43]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.tamper_chaos.jsonl: 98025 events, 1 session(s)
+  session 1 party A: ACCEPTED (43081 operations, 138 keys)
+  session 1 party B: ACCEPTED (42944 operations, 137 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 key agreement: incomplete epochs (one party only) [138]
+  session 1 randomness reuse (outside BraidModel): ok
+/tmp/spqr-traces-tamper-honest/v1.test.tamper_early.jsonl: 6490 events, 6 session(s)
+  session 1 party A: ACCEPTED (300 operations, 0 keys)
+  session 1 party B: ACCEPTED (300 operations, 0 keys)
+  session 1 delivery: ok
+  session 1 key agreement: ok
+  session 1 randomness reuse (outside BraidModel): ok
+  session 2 party A: ACCEPTED (300 operations, 0 keys)
+  session 2 party B: ACCEPTED (300 operations, 1 keys)
+  session 2 delivery: ok
+  session 2 key agreement: ok
+  session 2 key agreement: incomplete epochs (one party only) [1]
+  session 2 randomness reuse (outside BraidModel): ok
+  session 3 party A: ACCEPTED (300 operations, 0 keys)
+  session 3 party B: ACCEPTED (300 operations, 0 keys)
+  session 3 delivery: ok
+  session 3 key agreement: ok
+  session 3 randomness reuse (outside BraidModel): ok
+  session 4 party A: ACCEPTED (300 operations, 0 keys)
+  session 4 party B: ACCEPTED (300 operations, 1 keys)
+  session 4 delivery: ok
+  session 4 key agreement: ok
+  session 4 key agreement: incomplete epochs (one party only) [1]
+  session 4 randomness reuse (outside BraidModel): ok
+  session 5 party A: ACCEPTED (300 operations, 0 keys)
+  session 5 party B: ACCEPTED (300 operations, 0 keys)
+  session 5 delivery: ok
+  session 5 key agreement: ok
+  session 5 randomness reuse (outside BraidModel): ok
+  session 6 party A: ACCEPTED (300 operations, 0 keys)
+  session 6 party B: ACCEPTED (300 operations, 1 keys)
+  session 6 delivery: ok
+  session 6 key agreement: ok
+  session 6 key agreement: incomplete epochs (one party only) [1]
+  session 6 randomness reuse (outside BraidModel): ok
+ALL CHECKS PASSED

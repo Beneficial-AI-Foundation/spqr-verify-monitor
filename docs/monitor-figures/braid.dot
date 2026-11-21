@@ -1,0 +1,25 @@
+digraph braid {
+  rankdir=LR; bgcolor=white; node [shape=box style="rounded,filled" fontname="DejaVu Sans" fontsize=11];
+  edge [fontname="DejaVu Sans" fontsize=9];
+  subgraph cluster_ek { label="sends the encapsulation key (epoch e)"; color="#2f6fae"; fontname="DejaVu Sans";
+    KU [label="KeysUnsampled" fillcolor="#dbe9f6"]; KS [label="KeysSampled" fillcolor="#b5d3ee"];
+    HS [label="HeaderSent" fillcolor="#86b6e0"]; C1R [label="Ct1Received" fillcolor="#5596cc" fontcolor=white];
+    ESC [label="EkSentCt1Received" fillcolor="#2f6fae" fontcolor=white]; }
+  subgraph cluster_ct { label="sends the ciphertext (epoch e)"; color="#b4520e"; fontname="DejaVu Sans";
+    NHR [label="NoHeaderReceived" fillcolor="#fde4c8"]; HR [label="HeaderReceived" fillcolor="#fbc994"];
+    C1S [label="Ct1Sampled" fillcolor="#f6a95f"]; ERC [label="EkReceivedCt1Sampled" fillcolor="#ec8a3a" fontcolor=white];
+    C1A [label="Ct1Acknowledged" fillcolor="#d86c1f" fontcolor=white]; C2S [label="Ct2Sampled" fillcolor="#b4520e" fontcolor=white]; }
+  KU -> KS [label="(1) send: KeyGen, MAC hdr"];
+  KS -> HS [label="(2) recv first ct1 chunk"];
+  HS -> C1R [label="(3) ct1 decoded"];
+  C1R -> ESC [label="(4) recv first ct2 chunk"];
+  ESC -> NHR [label="(5) ct2 decoded: Decaps,\nverify ciphertext MAC, key(e), e+1" color="#c62828" fontcolor="#c62828" penwidth=2];
+  NHR -> HR [label="(6) hdr decoded,\nverify header MAC"];
+  HR -> C1S [label="(7) send: Encaps1, key(e)"];
+  C1S -> C1A [label="(8) recv first ack chunk"];
+  C1S -> C2S [label="(9) ek decoded from acks:\nEncaps2, MAC ct" color="#c62828" fontcolor="#c62828"];
+  C1S -> ERC [label="(10) ek decoded"];
+  C1A -> C2S [label="(11) ek decoded:\nEncaps2, MAC ct" color="#c62828" fontcolor="#c62828" penwidth=2];
+  ERC -> C2S [label="(12) recv ack:\nEncaps2, MAC ct" color="#c62828" fontcolor="#c62828"];
+  C2S -> KU [label="(13) recv message of epoch e+1"];
+}

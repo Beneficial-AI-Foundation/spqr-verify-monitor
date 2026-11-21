@@ -175,7 +175,7 @@
     \node[tool, minimum width=2.8cm] (q) at (4.2, 0.7) {$Q_i$: partial\\primitives};
     \node[tool, minimum width=2.8cm] (obs) at (4.2, -0.7) {$\mathit{obs}_i$: step event};
     \node[spec, minimum width=3.6cm, minimum height=1.6cm] (step) at (8.8, 0)
-      {\code{checkStep} $Q_i$ $\sigma$ $\mathit{obs}_i$\\[0.2em]\code{sendO} / \code{receiveO}};
+      {\code{checkStep} $Q_i$ $\sigma$ $\mathit{obs}_i$\\[0.2em]\code{sendM} / \code{receiveM}};
     \node[proof, minimum width=2.2cm] (s2) at (13, 0.7) {$\sigma'$, if the\\step matches};
     \node[gap, minimum width=2.2cm] (none) at (13, -0.7) {\code{none}:\\reject};
     \draw[flow] (ev) -- (q);
@@ -210,7 +210,7 @@
 {\fontsize{7.5}{8.5}\selectfont
 \begin{verbatim}
 theorem accepted_alice
-    (h0 : initAliceO Q₀ ss = some σ₀) (h : checkRun σ₀ steps = some σ') :
+    (h0 : initAliceM Q₀ ss = some σ₀) (h : checkRun σ₀ steps = some σ') :
     ∀ P, Agrees P Q₀ → (∀ q ∈ steps, Agrees P q.1) →
       Explains P (initAlice P ss) obs σ' ∧ Run P (initAlice P ss) σ' (obsKeys obs)
 \end{verbatim}

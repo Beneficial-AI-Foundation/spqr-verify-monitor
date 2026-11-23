@@ -1,0 +1,13 @@
+diff -ru a/src/v1/unchunked/send_ct.rs b/src/v1/unchunked/send_ct.rs
+--- a/src/v1/unchunked/send_ct.rs
++++ b/src/v1/unchunked/send_ct.rs
+@@ -104,7 +104,8 @@
+         mac: &authenticator::Mac,
+     ) -> Result<HeaderReceived, Error> {
+         assert_eq!(epoch, self.epoch);
+-        self.auth.verify_hdr(self.epoch, &hdr, mac)?;
++        // Demo mutant for the runtime monitor: the header MAC is not checked.
++        let _ = mac;
+         Ok(HeaderReceived {
+             epoch: self.epoch,
+             auth: self.auth,

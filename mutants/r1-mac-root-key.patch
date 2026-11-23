@@ -1,0 +1,31 @@
+From 392b552c41e7a6472ef00acb564b4063f5ac0997 Mon Sep 17 00:00:00 2001
+From: astefano <lacramioara.astefanoaei@gmail.com>
+Date: Thu, 19 Nov 2026 20:46:38 +0100
+Subject: [PATCH] Demo mutant: key the ciphertext MAC with the root key instead
+ of the MAC key
+
+A one-word copy-paste slip in Authenticator::mac_ct. Both parties make it,
+so they still agree and the test suite passes. This branch is not for
+merging.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/authenticator.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/authenticator.rs b/src/authenticator.rs
+index 76bc3af..b95124c 100644
+--- a/src/authenticator.rs
++++ b/src/authenticator.rs
+@@ -75,7 +75,7 @@ pub fn mac_ct(&self, ep: Epoch, ct: &[u8]) -> Mac {
+         .concat();
+         hmac(
+             libcrux_hmac::Algorithm::Sha256,
+-            &self.mac_key,
++            &self.root_key,
+             &ct_mac_data,
+             Some(Self::MACSIZE),
+         )
+-- 
+2.56.0
+

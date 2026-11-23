@@ -49,6 +49,14 @@ pub struct GenericMessagingScka<SCKA: Scka> {
     last_emitted_epoch: Epoch,
 }
 
+#[cfg(feature = "monitor")]
+impl<SCKA: Scka> GenericMessagingScka<SCKA> {
+    /// The state of the underlying SCKA.
+    pub fn scka(&self) -> &SCKA {
+        &self.scka
+    }
+}
+
 impl<SCKA: Scka + SckaInitializer + Clone> MessagingScka for GenericMessagingScka<SCKA> {
     type CkaOutput = Secret;
 

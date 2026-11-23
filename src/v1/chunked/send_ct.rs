@@ -90,6 +90,8 @@ impl NoHeaderReceived {
             mut receiving_hdr,
         } = self;
         receiving_hdr.add_chunk(chunk);
+        #[cfg(feature = "monitor")]
+        crate::monitor::decoded(&receiving_hdr);
         if let Some(hdr) = receiving_hdr.decoded_message() {
             // hax 0.3.7 does not model Vec::split_off.
             let mac: authenticator::Mac =
@@ -177,6 +179,8 @@ impl Ct1Sampled {
             sending_ct1,
         } = self;
         receiving_ek.add_chunk(chunk);
+        #[cfg(feature = "monitor")]
+        crate::monitor::decoded(&receiving_ek);
         Ok(if let Some(decoded) = receiving_ek.decoded_message() {
             let uc = uc.recv_ek(epoch, decoded)?;
             if ct1_ack {
@@ -266,6 +270,8 @@ impl Ct1Acknowledged {
             mut receiving_ek,
         } = self;
         receiving_ek.add_chunk(chunk);
+        #[cfg(feature = "monitor")]
+        crate::monitor::decoded(&receiving_ek);
         Ok(if let Some(decoded) = receiving_ek.decoded_message() {
             let uc = uc.recv_ek(epoch, decoded)?;
             let (uc, ct2, mac) = uc.send_ct2();

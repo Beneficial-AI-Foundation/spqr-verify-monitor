@@ -62,7 +62,8 @@ def operations (evs : Array Event) : Array Operation × Option String := Id.run 
         cur := some ⟨o.op, o.events.push e, stepOf e⟩
       else
         if e.op < o.op then
-          return (ops, some s!"line {e.line}: operation {e.op} after operation {o.op}")
+          let done := if o.op == 0 || o.step.isSome then ops.push o else ops
+          return (done, some s!"line {e.line}: operation {e.op} after operation {o.op}")
         if o.op != 0 && o.step.isNone then
           return (ops, some s!"operation {o.op} has no step event")
         ops := ops.push o

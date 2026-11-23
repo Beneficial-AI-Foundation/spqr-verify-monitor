@@ -21,11 +21,13 @@ O=$(mktemp -d)
 scripts/monitor-mutants.sh $O
 ```
 
+The script runs the monitor under `systemd-run --user --scope -p MemoryMax=16G`, which needs a
+user service manager. Without one, run `SPQR_MONITOR_MEMCAP=0 scripts/monitor-mutants.sh $O`.
 `$O/summary.txt` has one line per case, and `$O/<name>/report.txt` has the monitor report.
 
 Result of a run on 2026-11-21. "Standard" is the eleven standard traces (22 parties). "Tamper"
-is the two tamper traces, which exist only with the feature `monitor`. A tamper test that fails
-stops early, so its trace has fewer parties.
+is the two tamper traces, which exist only with the feature `monitor`. When a tamper test fails
+before its last session starts, its trace has fewer parties.
 
 | Patch | Feature run | Standard: rejected | Tamper: rejected / parties | Failed cross-party checks |
 |-------|-------------|--------------------|----------------------------|---------------------------|

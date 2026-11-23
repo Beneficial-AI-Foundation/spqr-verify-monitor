@@ -99,8 +99,8 @@ for name in "$@"; do
   then
     errors=$((errors + 1))
   fi
-  accepted=$(grep -c ': ACCEPTED' "$dir/report.txt" || true)
-  rejected=$(grep -c ': REJECTED:' "$dir/report.txt" || true)
+  accepted=$(grep -cE '^  session [0-9]+ party [AB]: ACCEPTED' "$dir/report.txt" || true)
+  rejected=$(grep -cE '^  session [0-9]+ party [AB]: REJECTED:' "$dir/report.txt" || true)
   failed=$(grep -c ': FAILED:' "$dir/report.txt" || true)
   line="$name: cargo test $plain, with monitor feature $feat, $traces traces, $monitor, $accepted parties accepted, $rejected rejected, $failed cross-party checks failed"
   echo "$line" | tee -a "$out/summary.txt"

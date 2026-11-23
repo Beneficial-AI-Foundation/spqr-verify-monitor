@@ -125,6 +125,7 @@ def main (args : List String) : IO UInt32 := do
     | "--max-ops" :: n :: rest, _, fs => match n.toNat? with
       | some k => parse rest (some k) fs
       | none => .error s!"bad --max-ops {n}"
+    | ["--max-ops"], _, _ => .error "--max-ops needs a number"
     | f :: rest, m, fs => parse rest m (f :: fs)
   match parse args none [] with
   | .error err => IO.eprintln err; return 2

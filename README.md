@@ -30,9 +30,12 @@ that the tests record.
 `Spqr/Specs/Braid/StateMachine/PartialModel.lean` runs the model's steps `sendM` and `receiveM`
 in `Option` over partial primitives `OPrims`, a table of the primitive values that one operation
 logged. `Spqr/Specs/Braid/StateMachine/Monitor.lean` defines the checker `checkRun` and proves
-`accepted_alice` and `accepted_bob`. Assume that `checkRun` accepts the logged steps of a party.
-Then, for every total primitive set `P` that extends the logged tables and has the same total
-fields, the observations are a `BraidModel.Run` that emits the observed keys. The theorems have
+`accepted_alice` and `accepted_bob`. Assume that the initialization of a party gives the state
+`σ₀` and that `checkRun` accepts its logged steps from `σ₀`. Let `P` be a total primitive set that
+extends the logged tables and has the same total fields. Then each observation is a model step
+with `P` (`Explains`): a send or a successful receive gives the observed message or key, state
+name and epoch, and a failed receive is a failed `Receive()` that leaves the state unchanged. And
+the successful steps form a `BraidModel.Run` that emits the observed keys. The theorems have
 no `sorry` and depend only on `propext`, `Classical.choice` and `Quot.sound`.
 
 These parts are trusted, not proved: the hooks in `src/` and the event writer `src/monitor.rs`;

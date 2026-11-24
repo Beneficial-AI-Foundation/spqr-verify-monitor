@@ -16,7 +16,8 @@ The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
 This script computes the token of each step from the logged calls and bytes. UPPAAL sees
 only the token. With `--data formula` (the default), the script looks for an `hmac` call with
 the model's MAC input, so a wrong MAC input reaches the model as MISS and a MAC mismatch as
-BAD; `control` and `calls` pass the code's own verdict.
+BAD. `control` passes the code's own verdict; `calls` gives MISS when the operation logged no
+`hmac` call, and the code's own verdict otherwise.
 
 Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 
@@ -37,6 +38,7 @@ Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 """
 
 import argparse
+import json
 import math
 import os
 import re
@@ -655,12 +657,22 @@ def build(args):
                 kept.append(s)
             cur[s.party] = (s.label, s.epoch)
         steps = kept or steps[:1]   # an all-idle prefix keeps its first step
-    if not steps:
-        sys.exit(f"{args.trace}: no steps selected")
+    if not steps and not session_exists(args.trace, args.session):
+        sys.exit(f"{args.trace}: no session {args.session if args.session else ''} in the trace")
+    # an existing session with no selected step (the party has not acted yet) is an empty run
     global EMAX
     # epochs are bounded by the trace
     EMAX = max([3] + [max(s.mep, s.epoch, s.key, s.pre[1]) for s in steps])
     return steps
+
+
+def session_exists(path, session):
+    """Whether the trace at `path` has an event of `session` (any event if None)."""
+    with open(path) as f:
+        for line in f:
+            if line.strip() and (session is None or json.loads(line).get("s") == session):
+                return True
+    return False
 
 
 def run_verifyta(model, query_text, extra=()):

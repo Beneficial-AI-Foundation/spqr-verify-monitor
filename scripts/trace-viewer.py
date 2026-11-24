@@ -11,7 +11,8 @@ The trace is a JSONL file of the cargo feature `monitor` (`src/monitor.rs`). Two
             rejected step
 
 The rejections come from a report of the Lean monitor (`lake env lean --run Monitor/Main.lean`),
-passed with `--report`. The viewer checks nothing itself.
+passed with `--report`. The viewer checks no protocol step itself; it stops on a log that breaks
+the format rules of the shared reader (`scripts/spqr_trace.py`).
 
 Examples (from the repository root):
   python3 scripts/trace-viewer.py overview T.jsonl --session 1 --report report.txt -o overview.svg

@@ -335,8 +335,8 @@ checks, so their agreement on these cases adds no detection power.
 
 ## 8. Draw the figures
 
-`scripts/trace-viewer.py` draws one session of a trace from a monitor report. It checks nothing
-itself. `scripts/monitor-figures.sh` draws the six trace figures of the slides from the run of
+`scripts/trace-viewer.py` draws one session of a trace from a monitor report. It checks no
+protocol step itself, and stops on a log that breaks the format rules of the shared reader. `scripts/monitor-figures.sh` draws the six trace figures of the slides from the run of
 section 5, and writes them to `docs/monitor-slides/fig/`:
 
 ```bash

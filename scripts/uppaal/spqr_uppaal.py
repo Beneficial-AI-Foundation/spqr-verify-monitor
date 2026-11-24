@@ -434,10 +434,8 @@ def steps_of(path, max_ops, data, party=None):
     ct1_recv, hdr_recv, ek_recv = {0: None, 1: None}, {0: None, 1: None}, {0: None, 1: None}
     es_own, ct1_own = {0: None, 1: None}, {0: None, 1: None}
     out = []
-    for es in operations(path):
+    for es in operations(path, max_op=max_ops):
         op = es[0]["op"]
-        if max_ops is not None and op > max_ops:
-            break   # operations come in increasing order within a session
         if len({e["p"] for e in es}) != 1:
             check_operation(es)   # an operation with events of both parties stops the replay
         p = 0 if es[0]["p"] == "A" else 1

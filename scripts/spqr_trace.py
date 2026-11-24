@@ -52,14 +52,16 @@ def mac_input(label, epoch, body):
     return PROTOCOL_INFO + label + epoch.to_bytes(8, "big") + body
 
 
-def operations(path, session=None):
-    """Yield the operations of one session of the trace at `path`, in file order.
+def operations(path, session=None, max_op=None):
+    """Yield the operations of one session of the trace at `path`, in file order, up to
+    operation `max_op` if given.
 
     Each operation is the list of its events. Each event gets a key `line` with its line number
-    in the file. Operation 0 is skipped. Every event must pass `check_event`, and in each
-    session the operation numbers must start at 0 and grow by at most 1, as the Lean monitor
-    requires. With `session=None`, the session of the first event is
-    used. The file is read once, line by line.
+    in the file. Operation 0 is skipped. Every event up to the last yielded operation must pass
+    `check_event`, and in each session the operation numbers must start at 0 and grow by at most
+    1, as the Lean monitor requires; an operation is yielded before the events after it are
+    checked. With `session=None`, the session of the first event is used. The file is read
+    once, line by line.
     """
     group, group_op = [], None
     last = {}   # the last operation number of each session
@@ -68,6 +70,12 @@ def operations(path, session=None):
             if not line.strip():
                 continue
             e = json.loads(line)
+            ours = isinstance(e, dict) and (session is None or e.get("s") == session)
+            if ours and group and e.get("op") != group_op:
+                yield group   # the operation is complete
+                group = []
+            if ours and max_op is not None and isinstance(e.get("op"), int) and e["op"] > max_op:
+                return
             check_event(e, n)
             if session is None:
                 session = e["s"]
@@ -77,9 +85,6 @@ def operations(path, session=None):
             last[e["s"]] = e["op"]
             if e["s"] != session or e["op"] == 0:
                 continue
-            if e["op"] != group_op and group:
-                yield group
-                group = []
             group_op = e["op"]
             e["line"] = n
             group.append(e)

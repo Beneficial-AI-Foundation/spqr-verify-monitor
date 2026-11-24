@@ -58,11 +58,13 @@ the result with the Lean monitor and UPPAAL.
 For each operation, the script gives Veil one MAC observation: `absent`
 (no `hmac` call), `good` (every `hmac` input has the form that the step
 computes for the epoch, `MacHdr` at transitions (1) and (6) and `MacCt`
-otherwise; a `MacCt` input must also match the `ct1 || ct2`
-arguments of one of the logged `decaps` calls, and its `ct2` part the result
-of one of the logged `encaps2` calls, when the operation has them) or `bad`.
-Veil does not track the key and the encapsulation state, so it does not pick
-the call that the model makes, as UPPAAL does. Veil does not compare MAC values: it does
+otherwise; at (5) a `MacCt` input must also match the `ct1 || ct2`
+arguments of one of the logged `decaps` calls, and at (9), (11) and (12) its
+`ct2` part the result of one of the logged `encaps2` calls, when the
+operation has them) or `bad`. Veil does not track the key and the
+encapsulation state, so it does not pick the `encaps2` call that the model
+makes, as UPPAAL does. At (5) UPPAAL takes the ciphertexts from the
+decoders, `ct1` from (3) and `ct2` from the step. Veil does not compare MAC values: it does
 not check that the computed MAC equals the received MAC, and it does not
 see the MAC key. So Veil cannot find R1 (MAC with the wrong key) or R4
 (the result of the MAC check is dropped).

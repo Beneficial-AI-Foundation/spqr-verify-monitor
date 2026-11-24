@@ -34,8 +34,8 @@ The other material on the branch illustrates these results. In the mutant compar
   input against the model's formula and passes a token. UPPAAL gets a missing token when no
   input matches, and a bad token when the received tag differs from the computed one. Veil gets
   `absent`, `good` or `bad`: `bad` when the input does not have the form of the MAC input of
-  the step, when its `ct1 || ct2` differs from the arguments of every logged `decaps`, or when
-  its `ct2` differs from the result of every logged `encaps2`. Veil
+  the step, at (5) when its `ct1 || ct2` differs from the arguments of every logged `decaps`,
+  or at (9), (11) and (12) when its `ct2` differs from the result of every logged `encaps2`. Veil
   does not compare tags. Section 7 compares the operations
   where they reject with the Lean monitor.
 - `docs/monitor-slides/` is a Beamer talk (`latexmk -lualatex -cd docs/monitor-slides/slides.tex`).
@@ -337,8 +337,9 @@ checks, so their agreement on these cases adds no detection power.
 
 ## 8. Draw the figures
 
-`scripts/trace-viewer.py` draws one session of a trace from a monitor report. It checks no
-protocol step itself, and stops on a log that breaks the format rules of the shared reader. `scripts/monitor-figures.sh` draws the six trace figures of the slides from the run of
+`scripts/trace-viewer.py` draws one session of a trace from a monitor report. It checks the event
+fields and the operation order (the shared reader), not the steps, and takes the rejections
+from the Lean report. `scripts/monitor-figures.sh` draws the six trace figures of the slides from the run of
 section 5, and writes them to `docs/monitor-slides/fig/`:
 
 ```bash

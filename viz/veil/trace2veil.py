@@ -58,13 +58,14 @@ VEIL_KINDS.update({k: VEIL_KINDS[v] for k, v in KIND_ALIASES.items()})
 PARTIES = {"A": "pA", "B": "pB"}
 
 
-def mac_input_ok(data: bytes, epoch: int, ops: list, hdr: bool) -> bool:
+def mac_input_ok(data: bytes, epoch: int, ops: list, hdr: bool, pre: str = "") -> bool:
     """Whether an HMAC input has the form of MacHdr (`hdr`) or MacCt (§2.4) for `epoch`:
     PROTOCOL_INFO, the label, the epoch as 8 big-endian bytes, then the header (64 bytes) or
-    ct1 || ct2 (960 + 128 bytes). For MacCt, when the operation logged decaps calls, ct1 || ct2
-    must be the ciphertexts of one of them, and when it logged encaps2 calls, ct2 must be the
-    result of one of them. Veil does not track the key and the encapsulation state, so it does
-    not pick the call that the model makes (UPPAAL does)."""
+    ct1 || ct2 (960 + 128 bytes). For MacCt at (5) (state `pre` EkSentCt1Received), when the
+    operation logged decaps calls, ct1 || ct2 must be the ciphertexts of one of them; at (9),
+    (11) and (12), when it logged encaps2 calls, ct2 must be the result of one of them. Veil
+    does not track the key and the encapsulation state, so it does not pick the encaps2 call
+    that the model makes (UPPAAL does)."""
     forms = [(HDR_LABEL, HDR_SIZE)] if hdr else [(CT_LABEL, CT1_SIZE + CT2_SIZE)]
     for lab, size in forms:
         prefix = mac_input(lab, epoch, b"")
@@ -72,15 +73,17 @@ def mac_input_ok(data: bytes, epoch: int, ops: list, hdr: bool) -> bool:
             if lab == CT_LABEL:
                 ct = data[len(prefix):]
                 dec = [bytes.fromhex(e["args"][1]) + bytes.fromhex(e["args"][2])
-                       for e in ops if e["f"] == "mlkem.decaps"]
-                enc = [bytes.fromhex(e["ret"]) for e in ops if e["f"] == "mlkem.encaps2"]
+                       for e in ops if e["f"] == "mlkem.decaps"] \
+                    if pre == "EkSentCt1Received" else []
+                enc = [bytes.fromhex(e["ret"]) for e in ops if e["f"] == "mlkem.encaps2"] \
+                    if pre in ("Ct1Sampled", "Ct1Acknowledged", "EkReceivedCt1Sampled") else []
                 if (dec and ct not in dec) or (enc and ct[CT1_SIZE:] not in enc):
                     return False
             return True
     return False
 
 
-def mac_obs(ops: list, epoch: int, any_mac_form: bool, hdr: bool) -> str:
+def mac_obs(ops: list, epoch: int, any_mac_form: bool, hdr: bool, pre: str = "") -> str:
     """The MAC observation of an operation: `absent` (no `hmac` call), `good` (every `hmac`
     input passes `mac_input_ok` with the form `hdr` of the step, or `any_mac_form` is set) or
     `bad`."""
@@ -89,7 +92,7 @@ def mac_obs(ops: list, epoch: int, any_mac_form: bool, hdr: bool) -> str:
         return "absent"
     if any_mac_form:
         return "good"
-    return "good" if all(mac_input_ok(c, epoch, ops, hdr) for c in calls) else "bad"
+    return "good" if all(mac_input_ok(c, epoch, ops, hdr, pre) for c in calls) else "bad"
 
 
 def operations0(path: str, session: int):
@@ -122,7 +125,7 @@ def steps(path: str, session: int, any_mac_form: bool = False):
         hdr = (send and pre_label == "KeysUnsampled") or (
             not send and pre_label == "NoHeaderReceived" and msg["kind"] == "hdr")
         st = {"line": n, "op": e["op"], "party": e["p"],
-              "mac": mac_obs(ops, pre_epoch, any_mac_form, hdr)}
+              "mac": mac_obs(ops, pre_epoch, any_mac_form, hdr, pre_label)}
         if send:
             if "err" in ret:
                 raise SystemExit(f"line {n}: send returned an error")

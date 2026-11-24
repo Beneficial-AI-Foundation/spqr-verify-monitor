@@ -109,7 +109,8 @@ def parse_report(path, trace, session):
 
 def step_info(e):
     """(pre label, post label, post epoch, key epoch or None, sent msg, received msg, error)
-    of a step event, or None."""
+    of a step event, or None. The error is None for a success, and the error text, possibly
+    empty, for a failure; test it with `is not None`."""
     if e is None:
         return None
     ret = e.get("ret")
@@ -173,7 +174,7 @@ def overview(ops, rejects, title):
         runs = []  # (start op, label, epoch)
         for o in pops:
             pre, post, ep, *_, err = o.info
-            if err:  # a failed receive leaves the state unchanged
+            if err is not None:  # a failed receive leaves the state unchanged
                 post, ep = pre, o.step["args"][1]
             if not runs or runs[-1][1:] != (post, ep):
                 runs.append((o.n, post, ep))
@@ -270,7 +271,7 @@ def match_messages(ops):
         if k is None or not q:
             continue
         deliveries[q[0]].append((o.n, tam))
-        if not (tam and err):
+        if not (tam and err is not None):
             q.popleft()
     return deliveries
 
@@ -281,7 +282,7 @@ def compact_rows(rows, rejects, deliveries):
     for o in rows:
         pre, post, ep, kep, _, _, err = o.info
         rej = rejects.get(o.party, (None,))[0]
-        if (o.n == rej or kep is not None or err or o.tamper or pre != post
+        if (o.n == rej or kep is not None or err is not None or o.tamper or pre != post
                 or o.step["args"][1] != ep):
             keep.add(o.n)
     # The sends whose message a kept receive got.
@@ -300,7 +301,7 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact, focus=None):
         if hide_idle:
             pre, post, _, kep, sent, recv, err = o.info
             rej = rejects.get(o.party, (None,))[0]
-            if o.n == rej or kep is not None or err:
+            if o.n == rej or kep is not None or err is not None:
                 return True
             if o.step["f"] == "States::send" and msg_key(sent) is None:
                 return False
@@ -349,9 +350,9 @@ def seq(ops, rejects, title, lo, hi, hide_idle, max_rows, compact, focus=None):
             out.append(f"<rect x='10' y='{y - rh / 2}' width='{W - 20}' height='{rh}' "
                        f"fill='#ffebee'/>")
         xx = xs[o.party]
-        lab = post if not err else f"error: {err}"
+        lab = post if err is None else f"error: {err}"
         fill = "#eeeeee" if after else COLORS.get(lab, "#ffcdd2")
-        if err:
+        if err is not None:
             ep = None
         tcol = "white" if lab in DARK and not after else ("#777" if after else "#111")
         stroke = RED if is_rej else "#555"

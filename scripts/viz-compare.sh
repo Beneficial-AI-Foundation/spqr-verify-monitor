@@ -64,7 +64,7 @@ lean_verdict() {
 # uppaal_verdict MUTANT TRACE PARTY MAX_OPS: "OP LINE" or "accepted".
 uppaal_verdict() {
   local out v
-  out=$(python3 -I "$UPPAAL" check "$OUT_DIR/$1/traces/$2" --party "$3" --max-ops "$4" \
+  out=$(python3 -I "$UPPAAL" check "$OUT_DIR/$1/traces/$2" --session 1 --party "$3" --max-ops "$4" \
           --workdir "$WORK/uppaal/$1") || fail "UPPAAL failed on $1 $2 party $3"
   if grep -q 'E<> Obs.done satisfied' <<<"$out"; then echo accepted; return; fi
   v=$(sed -n 's/^  rejected step [0-9]*: op \([0-9]*\) (line \([0-9]*\)).*/\1 \2/p' <<<"$out")

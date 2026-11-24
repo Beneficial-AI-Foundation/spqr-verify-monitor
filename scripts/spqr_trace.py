@@ -13,6 +13,7 @@ This module is imported by `scripts/trace-viewer.py`, `scripts/uppaal/spqr_uppaa
 `scripts/viz-compare.sh` and `scripts/monitor-figures.sh`.
 """
 
+import decimal
 import json
 import os
 import re
@@ -69,7 +70,7 @@ def operations(path, session=None, max_op=None):
         for n, line in enumerate(f, 1):
             if not line.strip():
                 continue
-            e = json.loads(line)
+            e = json.loads(line, parse_float=_number)
             ours = isinstance(e, dict) and (session is None or e.get("s") == session)
             if ours and group and e.get("op") != group_op:
                 yield group   # the operation is complete
@@ -90,6 +91,13 @@ def operations(path, session=None, max_op=None):
             group.append(e)
     if group:
         yield group
+
+
+def _number(s):
+    """A JSON number with a fraction or exponent, such as `1e0`: an int if its value is an
+    integer, as the Lean reader reads it, else a float."""
+    d = decimal.Decimal(s)
+    return int(d) if d == d.to_integral_value() else float(s)
 
 
 def _nat(x):
@@ -172,7 +180,7 @@ def op_at_line(path, n):
     with open(path) as f:
         for i, line in enumerate(f, 1):
             if i == n:
-                return json.loads(line)["op"] if line.strip() else None
+                return json.loads(line, parse_float=_number)["op"] if line.strip() else None
     return None
 
 

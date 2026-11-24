@@ -23,9 +23,9 @@ Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
       message of an epoch up to EMAX = 3 (loss, duplication, reordering). For the
       simulator.
 
-  trace TRACE.jsonl OUT.xml [--max-ops N] [--party A|B] [--drop-idle]
+  trace TRACE.jsonl OUT.xml [--session S] [--max-ops N] [--party A|B] [--drop-idle]
                             [--data control|calls|formula]
-      The model plus an observer that replays the first session of the trace
+      The model plus an observer that replays one session of the trace (the first by default)
       step by step. Location `step_k` of the observer means k steps matched.
 
   check TRACE.jsonl [same options] [--workdir DIR]
@@ -409,13 +409,14 @@ class Step:
 
 
 def pick(calls, *args):
-    """The result of the calls whose arguments are `args` (bytes), if they have one result;
+    """The result of the calls whose first arguments are `args` (bytes), as the Lean reader
+    reads them (it ignores further arguments), if they have one result;
     None if there is no such call, an argument is None, or the calls disagree."""
     if any(a is None for a in args):
         return None
     rets = {repr(c["ret"]) for c in calls
-            if len(c["args"]) == len(args)
-            and all(hexb(x) == a for x, a in zip(c["args"], args))}
+            if len(c["args"]) >= len(args)
+            and all(isinstance(x, str) and hexb(x) == a for x, a in zip(c["args"], args))}
     if len(rets) != 1:
         return None
     return next(c["ret"] for c in calls if repr(c["ret"]) in rets)
@@ -426,15 +427,15 @@ def epoch_value(saved, epoch):
     return saved[1] if saved is not None and saved[0] == epoch else None
 
 
-def steps_of(path, max_ops, data, party=None):
-    """The steps of the first session in the trace at `path`, with the data token of each; with
-    `party` (0 or 1), only that party's steps."""
+def steps_of(path, max_ops, data, party=None, session=None):
+    """The steps of session `session` (default: the first) of the trace at `path`, with the
+    data token of each; with `party` (0 or 1), only that party's steps."""
     # (epoch, value) per party: ct1 decoded at (3), hdr decoded at (6), ek decoded at (10),
     # and the encapsulation state and ct1 that the party sampled at (7)
     ct1_recv, hdr_recv, ek_recv = {0: None, 1: None}, {0: None, 1: None}, {0: None, 1: None}
     es_own, ct1_own = {0: None, 1: None}, {0: None, 1: None}
     out = []
-    for es in operations(path, max_op=max_ops):
+    for es in operations(path, session, max_op=max_ops):
         op = es[0]["op"]
         if len({e["p"] for e in es}) != 1:
             check_operation(es)   # an operation with events of both parties stops the replay
@@ -625,7 +626,7 @@ def build(args):
     if args.max_ops is not None and args.max_ops < 1:
         sys.exit("--max-ops must be at least 1")
     party = None if args.party is None else 0 if args.party == "A" else 1
-    steps = steps_of(args.trace, args.max_ops, args.data, party)
+    steps = steps_of(args.trace, args.max_ops, args.data, party, args.session)
     if args.drop_idle:
         # drop an idle step only from the state that the earlier steps of its party give
         cur = {0: (LAB["KeysUnsampled"], 1), 1: (LAB["NoHeaderReceived"], 1)}
@@ -671,6 +672,8 @@ def main():
                            help="where to write the model and the witness "
                                 "(default: a new temporary directory)")
         t.add_argument("--max-ops", type=int, metavar="N", help="replay only operations 1 to N")
+        t.add_argument("--session", type=int, metavar="S",
+                       help="replay session S (default: the session of the first event)")
         t.add_argument("--party", choices=["A", "B"],
                        help="replay only this party's steps, and do not check delivery")
         t.add_argument("--drop-idle", action="store_true",

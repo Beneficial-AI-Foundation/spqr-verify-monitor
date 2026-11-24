@@ -103,7 +103,7 @@ translation differs from the binary in these places:
 - The `opaque` list in `Cargo.toml` keeps `spqr::kdf::hkdf_to_slice` and the state encoding
   without a body. The `exclude` list drops the `log` crate, the prost code and the SIMD field
   multiplication `spqr::encoding::gf::accelerated`.
-- `translation-patches/` changes 26 Rust functions before extraction. For example,
+- Extraction applies the 26 patches in `translation-patches/` to the Rust tree first. For example,
   `gf-mul2_u16.patch` removes the SIMD branch. On a CPU with `pclmulqdq` or `aes` (aarch64),
   the binary runs that branch, and the Lean code never sees it.
 - The Rust compiler, the standard library and libcrux itself are trusted.

@@ -19,6 +19,9 @@ import os
 import re
 import sys
 
+# The Lean reader accepts natural numbers of any length; so does this one.
+sys.set_int_max_str_digits(0)
+
 # The eleven `Label` constructors of the braid, in the order of `BraidModel`.
 LABELS = [
     "KeysUnsampled", "KeysSampled", "HeaderSent", "Ct1Received", "EkSentCt1Received",

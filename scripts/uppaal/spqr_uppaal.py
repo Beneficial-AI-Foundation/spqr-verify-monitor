@@ -404,12 +404,14 @@ class Step:
             tok, label, epoch, key, line, pre)
 
     def describe(self):
+        """The step as logged, with the epochs before any clamping (`build`)."""
+        mep, epoch, key, pre = getattr(self, "logged", (self.mep, self.epoch, self.key, self.pre))
         p = "A" if self.party == 0 else "B"
-        msg = f"epoch {self.mep} {KINDS[self.kind]}"
+        msg = f"epoch {mep} {KINDS[self.kind]}"
         res = ("error" if self.dir == RECV_ERR else
-               f"-> {LABELS[self.label]} epoch {self.epoch}" + (f" key {self.key}" if self.key >= 0 else ""))
+               f"-> {LABELS[self.label]} epoch {epoch}" + (f" key {key}" if key >= 0 else ""))
         return (f"op {self.op} (line {self.line}) party {p} {DIR_NAMES[self.dir].lower()} {msg} "
-                f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
+                f"in {LABELS[pre[0]]} epoch {pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
 MAC_SIZE, EK_SIZE = 32, 1152
@@ -668,6 +670,7 @@ def build(args):
     # fails either way. Both keep the model's arrays small.
     bound = len(steps) + 2
     for s in steps:
+        s.logged = (s.mep, s.epoch, s.key, s.pre)
         if max(s.epoch, s.key, s.pre[1]) > bound:
             s.tok = T_MISS
             s.epoch, s.key = min(s.epoch, bound), min(s.key, bound)

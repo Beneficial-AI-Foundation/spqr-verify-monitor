@@ -166,7 +166,8 @@ impl OrchestratorBase<Cka> {
 }
 
 /// The `chaos` driver, where each delivery of a `Hdr` or `Ct2` chunk that completes the
-/// decoder is replaced, with probability `prob`, by a tampered copy. The original is delivered
+/// decoder, and that the dry run accepts with a change of the receiver's state, is replaced,
+/// with probability `prob`, by a tampered copy. The original is delivered
 /// only if the code rejects the copy. Asserts that the code rejects at least one tampered copy.
 pub fn tamper_chaos<R: CryptoRng>(num_ticks: usize, prob: f64, rng: &mut R) -> Result<(), Error> {
     let mut stats = Stats::default();
@@ -180,8 +181,8 @@ pub fn tamper_chaos<R: CryptoRng>(num_ticks: usize, prob: f64, rng: &mut R) -> R
 
 /// Runs `sessions` sessions of `num_ticks` ticks. In each tick a random party sends a message
 /// and the other party receives its whole queue in order. In each session the first `Hdr`
-/// chunk (even sessions) or `Ct2` chunk (odd sessions) that does not complete the decoder is
-/// replaced by a tampered copy. Asserts that the code accepts the copy, that the party that
+/// chunk (even sessions) or `Ct2` chunk (odd sessions) that is added to an existing decoder and
+/// does not complete it is replaced by a tampered copy. Asserts that the code accepts the copy, that the party that
 /// received it (the victim) later fails a MAC check on a chunk of the same kind and epoch, and that
 /// the keys of both parties agree. Any other error ends the test.
 pub fn tamper_early<R: CryptoRng>(

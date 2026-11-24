@@ -15,7 +15,8 @@
 # exits 1. Run it from the repository root, after `lake build Monitor`. Uncommitted changes are
 # not part of the copy.
 #
-# Prerequisites: git, cargo with the toolchain in SPQR_RUST_TOOLCHAIN (default +1.99.1), and lake.
+# Prerequisites: git, cargo with the toolchain in SPQR_RUST_TOOLCHAIN (default +1.99.1), protoc,
+# and lake.
 # The monitor runs under `systemd-run --user --scope -p MemoryMax=16G` when systemd-run is
 # available; set SPQR_MONITOR_MEMCAP=0 to run it without a cap.
 set -euo pipefail
@@ -101,7 +102,7 @@ for name in "$@"; do
   fi
   accepted=$(grep -cE '^  session [0-9]+ party [AB]: ACCEPTED' "$dir/report.txt" || true)
   rejected=$(grep -cE '^  session [0-9]+ party [AB]: REJECTED:' "$dir/report.txt" || true)
-  failed=$(grep -c ': FAILED:' "$dir/report.txt" || true)
+  failed=$(grep -cE '^  session [0-9]+ [a-z ()A-Z]+: FAILED:' "$dir/report.txt" || true)
   line="$name: cargo test $plain, with monitor feature $feat, $traces traces, $monitor, $accepted parties accepted, $rejected rejected, $failed cross-party checks failed"
   echo "$line" | tee -a "$out/summary.txt"
   rm -rf "$dir/target"

@@ -166,8 +166,8 @@ impl OrchestratorBase<Cka> {
 }
 
 /// The `chaos` driver, where each delivery of a `Hdr` or `Ct2` chunk that completes the
-/// decoder is preceded, with probability `prob`, by a tampered copy. Asserts that the code
-/// rejects at least one tampered copy.
+/// decoder is replaced, with probability `prob`, by a tampered copy. The original is delivered
+/// only if the code rejects the copy. Asserts that the code rejects at least one tampered copy.
 pub fn tamper_chaos<R: CryptoRng>(num_ticks: usize, prob: f64, rng: &mut R) -> Result<(), Error> {
     let mut stats = Stats::default();
     super::chaos_with::<Cka, R>(num_ticks, rng, |orchestrator, is_alex, i, rng| {

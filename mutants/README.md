@@ -14,7 +14,7 @@ Each patch makes one small change to `src/`. `cargo test` still passes with each
 | `r4-verify-result-dropped.patch` | drops the result of `verify_ct` |
 
 To run all of them, use `scripts/monitor-mutants.sh` from the repository root, after
-`lake build Monitor`. Each case takes about 6 minutes:
+`lake build Monitor`. The script needs `cargo +1.99.1` and `protoc`. Each case takes about 6 minutes:
 
 ```bash
 O=$(mktemp -d)

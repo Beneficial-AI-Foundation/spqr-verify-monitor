@@ -58,7 +58,8 @@ def operations (evs : Array Event) : Array Operation × Option String := Id.run 
     | some o =>
       if o.op == e.op then
         if o.step.isSome then
-          return (ops, some s!"line {e.line}: event after the step event of operation {o.op}")
+          return (ops.push o,
+            some s!"line {e.line}: event after the step event of operation {o.op}")
         cur := some ⟨o.op, o.events.push e, stepOf e⟩
       else
         if e.op < o.op then

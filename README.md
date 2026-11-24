@@ -59,7 +59,8 @@ lake env lean --run Monitor/Main.lean /tmp/spqr-traces/*.jsonl
 
 The monitor prints one line per party (`ACCEPTED`, or `REJECTED` with the operation and the
 reason) and one line per cross-party check. It ends with `ALL CHECKS PASSED` (exit 0) or
-`SOME CHECKS FAILED` (exit 1). On the unmodified code, it accepts every party. A log has no end
+`SOME CHECKS FAILED` (exit 1). A file that does not parse stops the program with an error and
+no verdict. On the unmodified code, it accepts every party. A log has no end
 marker, so an acceptance covers only the recorded steps. To run the demo mutants, read
 [`mutants/README.md`](./mutants/README.md).
 

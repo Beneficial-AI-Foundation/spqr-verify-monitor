@@ -11,8 +11,9 @@ The monitor checks what the proofs cannot reach. `run_refines` is a theorem abou
 translation, not about the binary. Aeneas translates only part of the program. The ML-KEM, HMAC
 and HKDF calls are hand-written Lean models or opaque functions, the Rust is patched before
 extraction, and the binary depends on the compiler and on code that is not translated. The
-monitor takes each primitive value from the binary that runs, so it tests these assumptions on
-real executions. Section 2 lists them.
+monitor looks up the results of the cryptographic primitives, the decoder results and the parity
+chunks in the log of the binary that runs, and computes the systematic chunks itself, so it
+tests these assumptions on real executions. Section 2 lists them.
 
 ## 1. Results
 

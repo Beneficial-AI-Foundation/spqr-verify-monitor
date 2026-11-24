@@ -448,9 +448,17 @@ def steps_of(path, max_ops, data):
         enc1 = [e for e in es if e["f"] == "mlkem.encaps1"]
         enc2 = [e for e in es if e["f"] == "mlkem.encaps2"]
         ekm = [e for e in es if e["f"] == "mlkem.ek_matches_header"]
-        if st["f"] == "States::send" and pre[0] == LAB["HeaderReceived"] and enc1:
-            es_own[p] = (pre[1], hexb(enc1[0]["ret"][0]))
-            ct1_own[p] = (pre[1], hexb(enc1[0]["ret"][1]))
+        enc1_miss = False   # (7) has no Encaps1 call on the header of (6)
+        if st["f"] == "States::send" and pre[0] == LAB["HeaderReceived"]:
+            # (7) calls Encaps1 on the header of (6); a call on another header does not count
+            hdr = epoch_value(hdr_recv[p], pre[1])
+            rets = {repr(c["ret"]) for c in enc1 if hdr is not None and hexb(c["args"][0]) == hdr}
+            ret = next((c["ret"] for c in enc1 if repr(c["ret"]) in rets), None)
+            ok1 = len(rets) == 1
+            if not ok1 and data != "control":
+                enc1_miss = True
+            es_own[p] = (pre[1], hexb(ret[0]) if ok1 else None)
+            ct1_own[p] = (pre[1], hexb(ret[1]) if ok1 else None)
 
         def ct_parts(epoch, ek):
             """ct1 and ct2 of MacCt at (9), (11) and (12): the ct1 of (7), and the result of
@@ -486,7 +494,7 @@ def steps_of(path, max_ops, data):
             if "err" in r:
                 raise SystemExit(f"op {op}: send returned an error")
             m = r["msg"]
-            tok = T_NONE
+            tok = T_MISS if enc1_miss else T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else None
                 tok = mac_tok(HDR_LABEL, pre[1], [hdr], None, True)

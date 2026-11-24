@@ -174,7 +174,7 @@ def overview(ops, rejects, title):
             pre, post, ep, *_, err = o.info
             if err:  # a failed receive leaves the state unchanged
                 post, ep = pre, o.step["args"][1]
-            if not runs or runs[-1][1] != post:
+            if not runs or runs[-1][1:] != (post, ep):
                 runs.append((o.n, post, ep))
         def rect(a, b, fill):
             x0, x1 = x(a), max(x(b), x(a) + 0.6)

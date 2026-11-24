@@ -34,7 +34,9 @@ the operation, at one of three levels (`--data`):
 - `formula` (default): `T_MISS` if an operand (`hdr`, `ct1` or `ct2`) is
   missing or has the wrong length, or if no `hmac` call has the input of
   `MacHdr` or `MacCt` (`PROTOCOL_INFO`, the label, the big-endian epoch,
-  `hdr` or `ct1 || ct2`). On a receive, `T_BAD` if the computed MAC is not
+  `hdr` or `ct1 || ct2`). `ct1` comes from the `encaps1` call of
+  transition (7) on the header of (6); without such a call, (7) gets
+  `T_MISS`. On a receive, `T_BAD` if the computed MAC is not
   the received MAC, and `T_MISS` if calls with that input disagree. The `ek` token is the logged result of
   `mlkem.ek_matches_header`.
 
@@ -72,7 +74,8 @@ Options: `--party A|B` replays one party and does not check delivery,
 like the per-party verdict of the Lean monitor. `--drop-idle` removes the
 `none` steps that the model takes as self-loops: a send from
 `NoHeaderReceived` or `Ct1Acknowledged` in the sender's epoch, and a
-successful receive of an epoch at most the receiver's, with no key.
+successful receive of an epoch at most the receiver's, with no key. If
+every selected step is idle, the first one stays.
 `--workdir DIR` sets where the model and witness go (default: a new
 temporary directory, whose path the script prints). The file name comes
 from the trace directory name, so give each trace its own `--workdir`.

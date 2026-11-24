@@ -8,8 +8,9 @@
 # (the Lean monitor report) for honest, m1-skip-verify-ct, r2-mac-le-epoch, r3-mac-ct2-only
 # and r4-verify-result-dropped.
 #
-# For each case and party, the script prints the operation and trace line where each tool
-# rejects session 1, or "accepted".
+# For each case and party, the script prints the operation and trace line where the Lean
+# monitor and UPPAAL reject session 1, or "accepted". Veil gets one row per case, for both
+# parties: the first rejection in trace order, or "AB windows satisfiable".
 #
 # Prerequisites:
 #   - python3.
@@ -20,7 +21,7 @@
 #
 # UPPAAL replays one party (`--party`) up to MARGIN operations past the Lean rejection.
 # Veil replays both parties of the session together, so it finds only the first rejection
-# in trace order. Its steps stop two kept steps past that rejection.
+# in trace order. Its steps stop two kept steps past the first Lean rejection.
 # The honest run uses the largest bounds of the mutant runs and must be accepted.
 set -euo pipefail
 

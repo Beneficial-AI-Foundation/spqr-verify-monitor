@@ -16,8 +16,8 @@ reordering are possible. The model has no clocks.
 
 The data is abstract:
 
-- An epoch is a bounded integer. The bound is the largest epoch in the trace
-  (3 in the free model).
+- An epoch is a bounded integer. The bound `EMAX` is the largest epoch in the trace, and at
+  least 3 (3 in the free model). The arrays have room for epoch `EMAX + 1`.
 - A message is a pair (epoch, kind). Chunk indices and bytes are not in the model.
 - One token per step stands for the decoder, the MACs and the `ek` check:
   `T_NONE`, `T_PART` (the decoder has no message yet), `T_OK`,

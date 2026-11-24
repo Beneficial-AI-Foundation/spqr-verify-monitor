@@ -314,8 +314,9 @@ theorem accepted_alice (h₀ : initAliceM Q₀ ss = some σ₀)
     \item Bob is caught first, when he builds the \code{ct2} encoder: the HMAC call has
       other data than $\code{PROTOCOL\_INFO} \| \mathit{label} \| \code{be64}(e) \| \mathit{ct}$.
       Alice is caught later, at (5).
-    \item R1 and R3 give the same diagnosis: it names the missing value, not which part of
-      the HMAC input differs.
+    \item R1 and R3 are also rejected where the HMAC input first differs. The message names a
+      missing value, and depends on the transition; it does not say which part of the input
+      differs.
   \end{itemize}
 \end{frame}
 

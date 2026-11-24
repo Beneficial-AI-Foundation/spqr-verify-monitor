@@ -267,7 +267,8 @@ def run(veil: str, sts, keep: str, tag: str, start: int = 0, length=None, state=
         raise SystemExit(f"{path}: killed at the memory cap {MEM}")
     if p.returncode != 0:
         raise SystemExit(f"Lean exited with {p.returncode} on {path}:\n{out[-3000:]}")
-    if "Satisfying trace found" in out:
+    # Veil prints the first with a witness and the second when it cannot extract one
+    if "Satisfying trace found" in out or "Found satisfying trace" in out:
         return True, time.time() - t, out
     if "No satisfying trace exists" in out:
         return False, time.time() - t, out

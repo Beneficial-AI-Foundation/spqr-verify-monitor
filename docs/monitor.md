@@ -24,7 +24,8 @@ real executions. Section 2 lists them.
 | 4 | A dropped verification result (R4) passes `cargo test`, and the monitor accepts R4 on the standard traces. A test driver that tampers with chunks in transit exposes it: when a `Ct2` decoder that got a tampered chunk completes, the MAC check fails and R4 accepts anyway, and the monitor rejects that step. The tamper tests also fail on their own key check. | mutant R4, tests `tamper_early` and `tamper_chaos` |
 | 5 | Fixed KeyGen randomness (M5) is a valid model run. A separate check, outside the theorems, rejects it. | mutant M5 |
 
-The other material on the branch illustrates these results and adds no detection power:
+The other material on the branch illustrates these results. In the mutant comparison of section
+7, the replays reject no mutant that the Lean monitor accepts:
 
 - `scripts/trace-viewer.py` draws a trace as an SVG figure.
 - `scripts/uppaal/` and `viz/veil/` replay a trace in an UPPAAL model and in a Veil model of the
@@ -267,8 +268,10 @@ the standard traces change from run to run (section 4).
 ## 7. Compare with the UPPAAL and Veil replays
 
 `scripts/viz-compare.sh` replays session 1 of four mutant traces, and of the honest `chaos`
-trace, in the UPPAAL model and in the Veil model. It prints, for each party, the operation
-where the Lean monitor, UPPAAL and Veil reject. It reads the output directory of section 5.
+trace, in the UPPAAL model and in the Veil model. It prints one row per party with the operation
+where the Lean monitor and UPPAAL reject, and one row per case for Veil, which replays both
+parties together: the first rejection in trace order, or "AB windows satisfiable". It reads the
+output directory of section 5.
 
 Prerequisites:
 

@@ -227,7 +227,7 @@ def overview(ops, rejects, title):
     out.append(f"<path d='M{left},{ay + 50} l-4,8 h8 z' fill='#f2b705' stroke='#7a5c00' "
                f"stroke-width='0.5'/>")
     out.append(svg_text(left + 10, ay + 58, "key emitted", 10))
-    out.append(svg_text(left + 110, ay + 58, "e<n> epoch starts", 10))
+    out.append(svg_text(left + 110, ay + 58, "e<n> epoch from here", 10))
     out += legend(left + 260, ay + 58)
     H = ay + 120
     y = H

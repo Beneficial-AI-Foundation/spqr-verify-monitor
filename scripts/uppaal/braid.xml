@@ -67,7 +67,7 @@ int[0, 2] e_dir;
 kind_t e_kind;
 epoch_t e_ep;
 tok_t e_tok;
-int matched;             // number of trace steps matched
+int[0, 1] matched;   // number of trace steps matched
 
 // one channel per message kind for sends, one delivery channel per receiver
 chan none_[2], hdr[2], ek[2], ekct1ack[2], ct1ack[2], ct1[2], ct2[2];

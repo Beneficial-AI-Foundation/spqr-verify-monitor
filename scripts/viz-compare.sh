@@ -11,7 +11,8 @@
 # For each case and party, the script prints the operation and trace line where the Lean
 # monitor and UPPAAL reject session 1, or "accepted". Veil gets one row per case, for both
 # parties: the party and operation of the first rejection in trace order, or "windows
-# satisfiable" with the party column AB.
+# satisfiable" with the party column AB. If the Lean report gives no rejected operation for a
+# case, its replays do not run: the UPPAAL column says "not run" and the case has no Veil row.
 #
 # Prerequisites:
 #   - python3.

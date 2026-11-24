@@ -13,14 +13,15 @@ This module is imported by `scripts/trace-viewer.py`, `scripts/uppaal/spqr_uppaa
 `scripts/viz-compare.sh` and `scripts/monitor-figures.sh`.
 """
 
-import decimal
 import json
 import os
 import re
 import sys
 
-# The Lean reader accepts natural numbers of any length; so does this one.
-sys.set_int_max_str_digits(0)
+# The Lean reader accepts natural numbers of any length; so does this one (Python 3.11 and later
+# limit the conversion by default; earlier versions do not).
+if hasattr(sys, "set_int_max_str_digits"):
+    sys.set_int_max_str_digits(0)
 
 # The eleven `Label` constructors of the braid, in the order of `BraidModel`.
 LABELS = [
@@ -100,8 +101,18 @@ def operations(path, session=None, max_op=None):
 def number(s):
     """A JSON number with a fraction or exponent, such as `1e0`: an int if its value is an
     integer, as the Lean reader reads it, else a float."""
-    d = decimal.Decimal(s)
-    return int(d) if d == d.to_integral_value() else float(s)
+    m = re.fullmatch(r"(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?", s)
+    if m is None:
+        return float(s)
+    sign, ip, fp, ex = m.group(1), m.group(2), m.group(3) or "", int(m.group(4) or 0)
+    whole = ip + fp
+    digits = whole.rstrip("0") or "0"
+    ex += len(whole) - len(digits) - len(fp)   # trailing zeros raise it, the fraction lowers it
+    if digits.strip("0") == "":
+        return 0
+    if 0 <= ex <= 100_000:   # an integer of a size that a log can hold
+        return int(sign + digits) * 10 ** ex
+    return float(s)
 
 
 def _nat(x):

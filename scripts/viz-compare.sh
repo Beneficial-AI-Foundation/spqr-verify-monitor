@@ -174,6 +174,12 @@ done
 honest_ok=true
 for p in A B; do
   lean=$(lean_verdict honest v1.test.chaos.jsonl "$p")
+  if (( max_ops == 0 )); then
+    # no mutant gave a cutoff, so there is no bound for the honest replays
+    row honest v1.test.chaos.jsonl "$p" "$(fmt "$lean")" "not run (no mutant cutoff)" - -
+    [ "$lean" = accepted ] || honest_ok=false
+    continue
+  fi
   t0=$(date +%s)
   up=$(uppaal_verdict honest v1.test.chaos.jsonl "$p" "$max_ops")
   secs=$(( $(date +%s) - t0 ))
@@ -181,7 +187,7 @@ for p in A B; do
     "uppaal $secs"
   [ "$lean" = accepted ] && [ "$up" = accepted ] || honest_ok=false
 done
-if [ -n "$VEIL_DIR" ]; then
+if [ -n "$VEIL_DIR" ] && (( max_steps > 0 )); then
   t0=$(date +%s)
   v=$(veil_verdict honest v1.test.chaos.jsonl "$max_steps")
   secs=$(( $(date +%s) - t0 ))

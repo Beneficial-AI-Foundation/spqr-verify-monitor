@@ -220,8 +220,8 @@ awk '/^[^ ].*\.jsonl: /{t=($0~/tamper/)?"tamper":"standard"} / party [AB]: REJEC
 ```
 
 Result on the branch (2026-11-21). "Standard" is the eleven standard traces (22 parties).
-"Tamper" is the two tamper traces. A tamper test that fails stops early, so its trace has fewer
-sessions.
+"Tamper" is the two tamper traces. When `tamper_early` fails, it stops before its later
+sessions, so its trace has fewer sessions; `tamper_chaos` has one session.
 
 | Patch | `cargo test` | Feature run | Standard: rejected | Tamper: rejected / parties | Failed cross-party checks |
 |-------|--------------|-------------|--------------------|----------------------------|---------------------------|

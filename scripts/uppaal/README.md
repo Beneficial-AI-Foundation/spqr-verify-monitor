@@ -18,7 +18,10 @@ message of epoch 4 is stored but not delivered. The model has no clocks.
 The data is abstract:
 
 - An epoch is a bounded integer. The bound `EMAX` is the largest epoch in the selected steps
-  (after `--max-ops`, `--party` and `--drop-idle`), and at least 3 (3 in the free model). The arrays have room for epoch `EMAX + 1`.
+  (after `--max-ops`, `--party` and `--drop-idle`), and at least 3 (3 in the free model). A
+  party epoch above the number of steps plus 2 has no model run: the step gets `T_MISS`. A
+  message epoch above that bound plus 1 is replayed as that bound plus 2, which the model
+  treats the same. The arrays have room for epoch `EMAX + 1`.
 - A message is a pair (epoch, kind). Chunk indices and bytes are not in the model.
 - One token per step stands for the decoder, the MACs and the `ek` check:
   `T_NONE`, `T_PART` (the decoder has no message yet), `T_OK`,

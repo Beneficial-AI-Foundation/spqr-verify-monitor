@@ -28,14 +28,39 @@ draw() {
 
 draw honest-seq seq honest v1.test.chaos.jsonl --compact --max-rows 24 --title ""
 draw honest-overview overview honest v1.test.chaos.jsonl
-draw m1-seq-a seq m1-skip-verify-ct v1.test.chaos.jsonl --around-reject A --compact --radius 200 --title ""
-draw r2-seq-b seq r2-mac-le-epoch v1.test.chaos.jsonl --around-reject B --compact --radius 200 --title ""
+# The largest rejected operation of session 1 of TRACE in the report of CASE, of PARTY if given,
+# or 0.
+last_reject() {
+  awk -v t="$2" -v p="${3:-[AB]}" '/^[^ ]/ { blk = index($0, t) > 0 }
+    blk && $0 ~ ("session 1 party " p ": REJECTED: operation") {
+      match($0, /operation [0-9]+/); n = substr($0, RSTART + 10, RLENGTH - 10) + 0
+      if (n > m) m = n }
+    END { print m + 0 }' "$out/$1/report.txt"
+}
+
+# A figure around a rejection needs that rejection; a run that did not reach the changed step
+# has none, and the figure keeps its old file.
+skipped=()
+draw_reject() {
+  local name=$1 case=$2 trace=$3 party=$4
+  if [ "$(last_reject "$case" "$trace" "$party")" -gt 0 ]; then
+    draw "$name" seq "$case" "$trace" --around-reject "$party" --compact --radius 200 --title ""
+  else
+    skipped+=("$name")
+  fi
+}
+
+draw_reject m1-seq-a m1-skip-verify-ct v1.test.chaos.jsonl A
+draw_reject r2-seq-b r2-mac-le-epoch v1.test.chaos.jsonl B
 # the R2 overview ends 100 operations after the later rejection of session 1
-to=$(awk -v t=v1.test.chaos.jsonl '/^[^ ]/ { blk = index($0, t) > 0 }
-  blk && /session 1 party [AB]: REJECTED: operation/ {
-    match($0, /operation [0-9]+/); n = substr($0, RSTART + 10, RLENGTH - 10) + 0
-    if (n > m) m = n }
-  END { print m + 0 }' "$out/r2-mac-le-epoch/report.txt")
-[ "$to" -gt 0 ] || { echo "no rejection of session 1 in the R2 chaos report" >&2; exit 1; }
-draw r2-overview overview r2-mac-le-epoch v1.test.chaos.jsonl --to $((to + 100))
-draw r4-seq-a seq r4-verify-result-dropped v1.test.tamper_chaos.jsonl --around-reject A --compact --radius 200 --title ""
+to=$(last_reject r2-mac-le-epoch v1.test.chaos.jsonl)
+if [ "$to" -gt 0 ]; then
+  draw r2-overview overview r2-mac-le-epoch v1.test.chaos.jsonl --to $((to + 100))
+else
+  skipped+=(r2-overview)
+fi
+draw_reject r4-seq-a r4-verify-result-dropped v1.test.tamper_chaos.jsonl A
+if [ ${#skipped[@]} -gt 0 ]; then
+  echo "not drawn, no rejection in the report (the old files stay): ${skipped[*]}" >&2
+  exit 1
+fi

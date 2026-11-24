@@ -344,7 +344,9 @@ scripts/monitor-figures.sh "$O"
 latexmk -lualatex -cd docs/monitor-slides/slides.tex
 ```
 
-It needs `rsvg-convert`. The deck needs LuaLaTeX with `latexmk`, the Beamer, TikZ and
+If the report of a run has no rejection for a figure around a rejection (`m1-seq-a`,
+`r2-seq-b`, `r2-overview`, `r4-seq-a`), the script does not draw that figure, names it, and
+exits 1; the old file stays. It needs `rsvg-convert`. The deck needs LuaLaTeX with `latexmk`, the Beamer, TikZ and
 `fontspec` packages, and the fonts DejaVu Sans, DejaVu Sans Mono, Noto Sans Math and STIX Two
 Math. The slide text quotes no operation numbers, so it stays true after a
 new run.

@@ -59,8 +59,12 @@ lean_verdict() {
     index($0, hdr) == 1 { on = 1; next }
     on && !/^ / { on = 0 }
     on && $0 ~ "^  session 1 party " p ": " {
-      if (match($0, /operation [0-9]+ \(line [0-9]+\)/)) {
-        split(substr($0, RSTART, RLENGTH), w, /[ ()]+/); print w[2], w[4]
+      if (match($0, /operation [0-9]+/)) {
+        op = substr($0, RSTART + 10, RLENGTH - 10); line = "-"
+        if (match($0, /operation [0-9]+ \(line [0-9]+\)/)) {
+          split(substr($0, RSTART, RLENGTH), w, /[ ()]+/); line = w[4]
+        }
+        print op, line
       } else if (/ACCEPTED/) print "accepted"
       exit
     }' "$report")
@@ -97,12 +101,12 @@ print(n)
 EOF
 }
 
-# veil_verdict MUTANT TRACE STEPS: "OP LINE PARTY" or "accepted".
+# veil_verdict MUTANT TRACE STEPS: "OP LINE PARTY", or "accepted N" with the N steps checked.
 # One Veil row: AB and "windows satisfiable", or the party and operation of the first rejection.
 veil_row() {
   local vop vline vparty
-  if [ "$3" = accepted ]; then
-    row "$1" "$2" AB - - "windows satisfiable ($4 steps)" "veil $5"
+  if [[ $3 == accepted* ]]; then
+    row "$1" "$2" AB - - "windows satisfiable (${3#accepted } steps)" "veil $5"
   else
     read -r vop vline vparty <<<"$3"
     row "$1" "$2" "$vparty" - - "op $vop (line $vline)" "veil $5"
@@ -113,7 +117,8 @@ veil_verdict() {
   local out v
   out=$(python3 -I "$VEIL" search "$OUT_DIR/$1/traces/$2" --veil "$VEIL_DIR" --steps "$3" \
           --jobs 2 --keep "$WORK/veil/$1") || fail "Veil failed on $1 $2"
-  if grep -q '^all .* steps satisfiable' <<<"$out"; then echo accepted; return; fi
+  v=$(sed -n 's/^all \([0-9]*\) steps satisfiable.*/\1/p' <<<"$out")
+  if [ -n "$v" ]; then echo "accepted $v"; return; fi
   v=$(sed -n 's/^first step with no model: step [0-9]*, line \([0-9]*\), party \([AB]\), op \([0-9]*\),.*/\3 \1 \2/p' <<<"$out")
   [ -n "$v" ] || fail "no Veil verdict for $1 $2:"$'\n'"$out"
   echo "$v"
@@ -122,7 +127,7 @@ veil_verdict() {
 fmt() {  # "OP LINE" -> "op OP (line LINE)"
   if [ "$1" = accepted ] || [ -z "$1" ]; then echo "${1:-none}"; return; fi
   set -- $1
-  echo "op $1 (line $2)"
+  if [ "$2" = - ]; then echo "op $1"; else echo "op $1 (line $2)"; fi
 }
 
 printf '%-26s %-27s %-5s %-20s %-32s %-24s %s\n' \
@@ -189,7 +194,7 @@ if [ -n "$VEIL_DIR" ]; then
   t0=$(date +%s)
   v=$(veil_verdict honest v1.test.chaos.jsonl "$max_steps")
   secs=$(( $(date +%s) - t0 ))
-  [ "$v" = accepted ] || honest_ok=false
+  [[ $v == accepted* ]] || honest_ok=false
   veil_row honest v1.test.chaos.jsonl "$v" "$max_steps" "$secs"
 fi
 $honest_ok || { echo "viz-compare: a tool rejects the honest trace" >&2; exit 1; }

@@ -100,8 +100,9 @@ def steps(path: str, session: int, any_mac_form: bool = False):
     """The step observations of one session, in file order."""
     for ops in operations(path, session):
         e = ops[-1]
-        if e["f"] not in STEP_FUNCS:
-            continue
+        if e["f"] not in STEP_FUNCS or sum(x["f"] in STEP_FUNCS for x in ops) != 1:
+            raise SystemExit(f"op {ops[0]['op']} (line {ops[0]['line']}): an operation needs "
+                             "exactly one step event, at its end")
         n = e["line"]
         pre_label, pre_epoch = e["args"][0], e["args"][1]
         ret = e["ret"]

@@ -425,8 +425,9 @@ def epoch_value(saved, epoch):
     return saved[1] if saved is not None and saved[0] == epoch else None
 
 
-def steps_of(path, max_ops, data):
-    """The steps of the first session in the trace at `path`, with the data token of each."""
+def steps_of(path, max_ops, data, party=None):
+    """The steps of the first session in the trace at `path`, with the data token of each; with
+    `party` (0 or 1), only that party's steps."""
     # (epoch, value) per party: ct1 decoded at (3), hdr decoded at (6), ek decoded at (10),
     # and the encapsulation state and ct1 that the party sampled at (7)
     ct1_recv, hdr_recv, ek_recv = {0: None, 1: None}, {0: None, 1: None}, {0: None, 1: None}
@@ -437,9 +438,12 @@ def steps_of(path, max_ops, data):
         if max_ops is not None and op > max_ops:
             break   # operations come in increasing order within a session
         p = 0 if es[0]["p"] == "A" else 1
+        if party is not None and p != party:
+            continue
         st = es[-1]
-        if st["f"] not in STEP_FUNCS:
-            raise SystemExit(f"op {op}: last event is {st['f']}, not a step")
+        if st["f"] not in STEP_FUNCS or sum(e["f"] in STEP_FUNCS for e in es) != 1:
+            raise SystemExit(f"op {op} (line {es[0]['line']}): an operation needs exactly one "
+                             "step event, at its end")
         pre = (LAB[st["args"][0]], st["args"][1])
         r = st["ret"]
         hmacs = [e for e in es if e["f"] == "hmac"]
@@ -621,10 +625,8 @@ def trace_model(steps, party):
 def build(args):
     if args.max_ops is not None and args.max_ops < 1:
         sys.exit("--max-ops must be at least 1")
-    steps = steps_of(args.trace, args.max_ops, args.data)
-    if args.party:
-        p = 0 if args.party == "A" else 1
-        steps = [s for s in steps if s.party == p]
+    party = None if args.party is None else 0 if args.party == "A" else 1
+    steps = steps_of(args.trace, args.max_ops, args.data, party)
     if args.drop_idle:
         # drop an idle step only from the state that the earlier steps of its party give
         cur = {0: (LAB["KeysUnsampled"], 1), 1: (LAB["NoHeaderReceived"], 1)}

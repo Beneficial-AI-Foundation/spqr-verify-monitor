@@ -478,13 +478,14 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
         delivery := .error s!"line {l}: the operation of the tamper event does not receive the \
           tampered copy"
         pending := none
+    let wellFormed := e.isStep && (parseObs e default).isOk
     if e.f == "States::send" then
-      if let (.ok m, .error _) := (e.ret.getObjVal? "msg", e.ret.getObjVal? "err") then
+      if let (true, .ok m) := (wellFormed, e.ret.getObjVal? "msg") then
         let k := (e.party, m.compress)
         sent := sent.insert k (sent.getD k 0 + 1)
     else if e.f == "States::recv" && delivery.isOk then
-      if e.args.size < 3 then
-        delivery := .error s!"line {e.line}: a receive without a message"
+      if !wellFormed then
+        delivery := .error s!"line {e.line}: a malformed receive"
       if let some m := e.args[2]? then
         match pending with
         | some (l, _, _, c, k) =>

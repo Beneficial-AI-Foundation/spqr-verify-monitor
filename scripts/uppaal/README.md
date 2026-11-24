@@ -42,7 +42,9 @@ the operation, at one of three levels (`--data`):
   `mlkem.ek_matches_header`.
 
 In every mode, a step that needs a decoder result gets `T_MISS` unless the
-operation logged exactly one `decoder.message` event.
+operation logged exactly one `decoder.message` event, with the point count
+of the decoder that the step uses (two bytes per point). A decoder result in
+a step that uses no decoder gives `T_MISS` too.
 
 The replay assumes a log that the Lean monitor's reader accepts: checking the
 log format is the reader's job. Before it translates a step, the script
@@ -58,13 +60,13 @@ the wrong input, reaches UPPAAL only as `T_MISS` or `T_BAD`.
 
 ## Trace observers
 
-`trace` and `check` add a template `Obs` that replays the first session of
-the trace. It has one location `step_k` per step: k steps matched, step k
+`trace` and `check` add a template `Obs` that replays one session of the
+trace (`--session S`, by default the session of the first event). It has one location `step_k` per step: k steps matched, step k
 expected. Each edge of `Obs` checks the state, epoch and key after a step
 and announces the next one, with the party's logged state and epoch before
 it; a party takes the step only from that state. A key absent is -1, so a
 key of epoch 0 differs from no key. `E<> Obs.done` holds if every selected
-step matches a model run: the steps of the first session up to `--max-ops`,
+step matches a model run: the steps of that session up to `--max-ops`,
 of one party with `--party`, without the idle steps with `--drop-idle`. `sup: matched` gives the largest k. If k is below the number of
 steps, step k is the rejected step. `check` runs `verifyta` (path in
 `$VERIFYTA`) and writes a witness as a `.xtr` file, which the Symbolic

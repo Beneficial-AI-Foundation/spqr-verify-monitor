@@ -28,7 +28,7 @@ from collections import deque
 from html import escape
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from spqr_trace import (LABELS, STEP_FUNCS, operations, rejected_at,  # noqa: E402
+from spqr_trace import (KIND_ALIASES, LABELS, STEP_FUNCS, operations, rejected_at,  # noqa: E402
                         short_label)
 
 # Blues for the half that sends the encapsulation key, oranges for the half that sends the
@@ -48,7 +48,7 @@ FONT = "font-family='DejaVu Sans, Helvetica, Arial, sans-serif'"
 
 def msg_key(m):
     """A key that identifies a message: (epoch, kind, chunk index, chunk data)."""
-    if not m or m.get("kind") in (None, "none"):
+    if not m or KIND_ALIASES.get(m.get("kind"), m.get("kind")) in (None, "none"):
         return None
     return (m.get("epoch"), m.get("kind"), m.get("index"), m.get("data"))
 

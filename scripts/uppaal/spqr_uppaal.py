@@ -408,6 +408,18 @@ class Step:
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
+MAC_SIZE, EK_SIZE = 32, 1152
+# the message size in bytes of the decoder that a same-epoch receive adds its chunk to
+DEC_SIZE = {
+    (LAB["HeaderSent"], KIND["ct1"]): CT1_SIZE,
+    (LAB["EkSentCt1Received"], KIND["ct2"]): CT2_SIZE + MAC_SIZE,
+    (LAB["NoHeaderReceived"], KIND["hdr"]): HDR_SIZE + MAC_SIZE,
+    (LAB["Ct1Sampled"], KIND["ek"]): EK_SIZE, (LAB["Ct1Sampled"], KIND["ekct1ack"]): EK_SIZE,
+    (LAB["Ct1Acknowledged"], KIND["ek"]): EK_SIZE,
+    (LAB["Ct1Acknowledged"], KIND["ekct1ack"]): EK_SIZE,
+}
+
+
 def pick(calls, *args):
     """The result of the calls whose first arguments are `args` (bytes), as the Lean reader
     reads them (it ignores further arguments), if they have one result;
@@ -498,7 +510,8 @@ def steps_of(path, max_ops, data, party=None, session=None):
             if "err" in r:
                 raise SystemExit(f"op {op}: send returned an error")
             m = r["msg"]
-            tok = T_MISS if enc1_miss else T_NONE
+            # a decoder result in a send has no model step
+            tok = T_MISS if enc1_miss or decoded else T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else None
                 tok = mac_tok(HDR_LABEL, pre[1], [hdr], None, True)
@@ -511,14 +524,14 @@ def steps_of(path, max_ops, data, party=None, session=None):
         ok = "err" not in r
         tok = T_NONE
         lab, e = pre
+        dec_size = (DEC_SIZE.get((lab, k))
+                    if m["epoch"] == e and lab != LAB["Ct2Sampled"] else None)
         if m["epoch"] == e and lab != LAB["Ct2Sampled"]:
-            dec_case = (lab, k) in {
-                (LAB["HeaderSent"], KIND["ct1"]), (LAB["EkSentCt1Received"], KIND["ct2"]),
-                (LAB["NoHeaderReceived"], KIND["hdr"]), (LAB["Ct1Sampled"], KIND["ek"]),
-                (LAB["Ct1Sampled"], KIND["ekct1ack"]), (LAB["Ct1Acknowledged"], KIND["ek"]),
-                (LAB["Ct1Acknowledged"], KIND["ekct1ack"])}
-            if dec_case:
-                if len(decoded) != 1:   # no decoder result, or two that may disagree
+            if dec_size is not None:
+                pts = decoded[0]["args"][0] if len(decoded) == 1 and decoded[0]["args"] else None
+                if len(decoded) != 1 or pts != dec_size // 2:
+                    # no decoder result, two that may disagree, or one for a decoder of
+                    # another size (two bytes per point)
                     tok = T_MISS
                 elif decoded[0]["ret"] is None:
                     tok = T_PART
@@ -551,6 +564,8 @@ def steps_of(path, max_ops, data, party=None, session=None):
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
                 tok = mac_tok(CT_LABEL, e, ct_parts(e, epoch_value(ek_recv[p], e)), None,
                               True)                                          # (12)
+        if decoded and dec_size is None:
+            tok = T_MISS   # a decoder result in a step that adds no chunk to a decoder
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,

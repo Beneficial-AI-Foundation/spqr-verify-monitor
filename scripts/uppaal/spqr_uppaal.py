@@ -4,7 +4,8 @@
 The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
 `receiveEq`) over abstract data:
 
-- epochs are bounded integers (1..EMAX);
+- epochs are bounded integers: a party's epoch starts at 1, a delivered message has an epoch in
+  0..EMAX, and the arrays have room for epoch EMAX + 1;
 - a message is (epoch, kind); chunk indices and bytes are dropped;
 - the decoders, the MACs and the `ek` check are one token per step:
   NONE (no decoder or check), PART (decoder has no message yet),
@@ -42,7 +43,8 @@ import tempfile
 from xml.sax.saxutils import escape
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
-from spqr_trace import (CT_LABEL, CT2_SIZE, HDR_LABEL, HDR_SIZE, KIND_ALIASES,  # noqa: E402
+from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
+                        KIND_ALIASES,
                         KINDS, LABELS, STEP_FUNCS, mac_input, operations, short_label)
 
 VERIFYTA = os.environ.get("VERIFYTA", "/opt/uppaal/lib/app/bin/verifyta.sh")
@@ -448,7 +450,8 @@ def steps_of(path, max_ops, data):
                 if not hmacs:
                     return T_MISS
                 return T_OK if code_ok else T_BAD
-            if body is None:
+            size = HDR_SIZE if label == HDR_LABEL else CT1_SIZE + CT2_SIZE
+            if body is None or len(body) != size:
                 return T_MISS
             want = mac_input(label, epoch, body)
             hit = [h for h in hmacs if hexb(h["args"][1]) == want]
@@ -456,7 +459,11 @@ def steps_of(path, max_ops, data):
                 return T_MISS
             if received_mac is None:
                 return T_OK
-            return T_OK if hexb(hit[0]["ret"]) == received_mac else T_BAD
+            # calls with this input but other keys may disagree; then there is no one verdict
+            same = {hexb(h["ret"]) == received_mac for h in hit}
+            if len(same) > 1:
+                return T_MISS
+            return T_OK if same.pop() else T_BAD
 
         if st["f"] == "States::send":
             if "err" in r:
@@ -600,7 +607,7 @@ def build(args):
             if not (is_idle(s) and s.pre == cur[s.party]):
                 kept.append(s)
             cur[s.party] = (s.label, s.epoch)
-        steps = kept
+        steps = kept or steps[:1]   # an all-idle prefix keeps its first step
     if not steps:
         sys.exit(f"{args.trace}: no steps selected")
     global EMAX

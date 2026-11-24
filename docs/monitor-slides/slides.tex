@@ -160,7 +160,7 @@
   \begin{tabular}{@{}>{\raggedright}p{4.4cm}>{\raggedright}p{4.4cm}>{\raggedright\arraybackslash}p{4.4cm}@{}}
     (1) send: KeyGen, header MAC & (6) header decoded, verify MAC & (10) ek decoded \\
     (2) first \code{ct1} chunk & (7) send: Encaps1, key of $e$ & \textcolor{gapc}{(11) ek decoded: Encaps2, MAC} \\
-    (3) \code{ct1} decoded & (8) first ack chunk & \textcolor{gapc}{(12) ack: Encaps2, MAC} \\
+    (3) \code{ct1} decoded & (8) ack chunk, \code{ek} incomplete & \textcolor{gapc}{(12) ack: Encaps2, MAC} \\
     (4) first \code{ct2} chunk & \textcolor{gapc}{(9) ek decoded from acks: Encaps2, MAC} & (13) message of epoch $e{+}1$ \\
     \textcolor{gapc}{(5) \code{ct2} decoded: Decaps, verify MAC, key, $e{+}1$} & & \\
   \end{tabular}}

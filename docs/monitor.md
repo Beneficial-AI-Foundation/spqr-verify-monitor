@@ -32,8 +32,9 @@ The other material on the branch illustrates these results. In the mutant compar
   braid. Both models see an abstraction of the trace: a Python script checks the logged HMAC
   input against the model's formula and passes a token. UPPAAL gets a missing token when no
   input matches, and a bad token when the received tag differs from the computed one. Veil gets
-  `absent`, `good` or `bad`: `bad` when the input does not have the form of the MAC input, or
-  when its ciphertext bytes differ from those of the logged `decaps` or `encaps2` call. Veil
+  `absent`, `good` or `bad`: `bad` when the input does not have the form of the MAC input of
+  the step, when its `ct1 || ct2` differs from the arguments of a logged `decaps`, or when its
+  `ct2` differs from the result of a logged `encaps2`. Veil
   does not compare tags. Section 7 compares the operations
   where they reject with the Lean monitor.
 - `docs/monitor-slides/` is a Beamer talk (`latexmk -lualatex -cd docs/monitor-slides/slides.tex`).
@@ -271,8 +272,9 @@ the standard traces change from run to run (section 4).
 trace, in the UPPAAL model and in the Veil model. It prints one row per party with the operation
 where the Lean monitor and UPPAAL reject, and one row per case for Veil, which replays both
 parties together: the party and operation of the first rejection in trace order, or
-"windows satisfiable" with the party column `AB`. The UPPAAL column gives the largest operation
-number of the replayed prefix as "op limit". It reads the
+"windows satisfiable" with the party column `AB`. The UPPAAL column gives the operation
+cutoff as "op limit": the prefix has the session's operations up to that number, and the
+replay keeps the party's steps among them. It reads the
 output directory of section 5.
 
 Prerequisites:

@@ -30,10 +30,11 @@ the operation, at one of three levels (`--data`):
 - `control`: the code's own result. The model sees only the control flow.
 - `calls`: `T_MISS` if the operation made no `hmac` call, else the code's
   own result.
-- `formula` (default): `T_MISS` if no `hmac` call has the input of
+- `formula` (default): `T_MISS` if an operand (`hdr`, `ct1` or `ct2`) is
+  missing or has the wrong length, or if no `hmac` call has the input of
   `MacHdr` or `MacCt` (`PROTOCOL_INFO`, the label, the big-endian epoch,
   `hdr` or `ct1 || ct2`). On a receive, `T_BAD` if the computed MAC is not
-  the received MAC. The `ek` token is the logged result of
+  the received MAC, and `T_MISS` if calls with that input disagree. The `ek` token is the logged result of
   `mlkem.ek_matches_header`.
 
 The script does all byte comparisons. A byte-level fault, such as a MAC over
@@ -78,7 +79,10 @@ from the trace directory name, so give each trace its own `--workdir`.
 
 - Key agreement and key bytes: the observer compares key epochs only.
 - The MAC key: `formula` compares the MAC input, not the key, so a mutant
-  that keys the MAC with the wrong key (R1) is not found.
+  that keys the MAC with the wrong key (R1) is not found. For the same
+  reason, a receive with two `hmac` calls over the same input that disagree
+  on the received MAC gets `T_MISS`, where the Lean monitor, which keys its
+  table by the key and the input, can accept.
 - Chunk contents and indices: erasure coding is one token per step, and a
   receive needs only some sent message of the same epoch and kind.
 - Delivery of `none` messages in trace mode: they need no prior send.

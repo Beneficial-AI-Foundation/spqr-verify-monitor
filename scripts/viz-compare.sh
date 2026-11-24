@@ -98,6 +98,17 @@ EOF
 }
 
 # veil_verdict MUTANT TRACE STEPS: "OP LINE PARTY" or "accepted".
+# One Veil row: AB and "windows satisfiable", or the party and operation of the first rejection.
+veil_row() {
+  local vop vline vparty
+  if [ "$3" = accepted ]; then
+    row "$1" "$2" AB - - "windows satisfiable ($4 steps)" "veil $5"
+  else
+    read -r vop vline vparty <<<"$3"
+    row "$1" "$2" "$vparty" - - "op $vop (line $vline)" "veil $5"
+  fi
+}
+
 veil_verdict() {
   local out v
   out=$(python3 -I "$VEIL" search "$OUT_DIR/$1/traces/$2" --veil "$VEIL_DIR" --steps "$3" \
@@ -152,12 +163,7 @@ for c in "${CASES[@]}"; do
     t0=$(date +%s)
     v=$(veil_verdict "$mut" "$trace" "$steps")
     secs=$(( $(date +%s) - t0 ))
-    if [ "$v" = accepted ] || [ -z "$v" ]; then
-      row "$mut" "$trace" AB "-" "-" "windows satisfiable ($steps steps)" "veil $secs"
-    else
-      read -r vop vline vparty <<<"$v"
-      row "$mut" "$trace" "$vparty" "-" "-" "op $vop (line $vline)" "veil $secs"
-    fi
+    veil_row "$mut" "$trace" "$v" "$steps" "$secs"
   fi
 done
 
@@ -177,7 +183,6 @@ if [ -n "$VEIL_DIR" ]; then
   v=$(veil_verdict honest v1.test.chaos.jsonl "$max_steps")
   secs=$(( $(date +%s) - t0 ))
   [ "$v" = accepted ] || honest_ok=false
-  if [ "$v" = accepted ]; then v="windows satisfiable"; fi
-  row honest v1.test.chaos.jsonl AB - - "$v ($max_steps steps)" "veil $secs"
+  veil_row honest v1.test.chaos.jsonl "$v" "$max_steps" "$secs"
 fi
 $honest_ok || { echo "viz-compare: a tool rejects the honest trace" >&2; exit 1; }

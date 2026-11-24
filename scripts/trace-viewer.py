@@ -6,8 +6,9 @@ The trace is a JSONL file of the cargo feature `monitor` (`src/monitor.rs`). Two
   overview  the braid state of both parties over the whole session, one colored band per
             party, with epoch ticks, emitted keys and the operation the monitor rejected
   seq       a sequence diagram of a window of operations: one lifeline per party, a chip for
-            each step, an arrow from each send to its receive, tampered messages, sends with no
-            logged receive, and the monitor's diagnosis at the rejected step
+            each step, an arrow from each send to its receive (not for `none` messages),
+            tampered messages, sends with no logged receive, and the monitor's diagnosis at the
+            rejected step
 
 The rejections come from a report of the Lean monitor (`lake env lean --run Monitor/Main.lean`),
 passed with `--report`. The viewer checks nothing itself.
@@ -454,7 +455,7 @@ def main():
     ap.add_argument("--compact", action="store_true",
                     help="seq: keep only steps that change the state or epoch, emit a key, fail, "
                          "are rejected or receive a tampered message, and the sends whose "
-                         "message a kept receive got")
+                         "message a kept receive got (not the sends of `none` messages)")
     ap.add_argument("--max-rows", type=int, default=70,
                     help="seq: draw at most this many steps (default 70)")
     ap.add_argument("-o", "--output", default="-", help="SVG file (default: standard output)")

@@ -407,15 +407,30 @@ class Step:
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
-def ct2_of(enc2):
-    """ct2 from the logged `encaps2` call, or None."""
-    return hexb(enc2[0]["ret"]) if enc2 else None
+def pick(calls, *args):
+    """The result of the calls whose arguments are `args` (bytes), if they have one result;
+    None if there is no such call, an argument is None, or the calls disagree."""
+    if any(a is None for a in args):
+        return None
+    rets = {repr(c["ret"]) for c in calls
+            if len(c["args"]) == len(args)
+            and all(hexb(x) == a for x, a in zip(c["args"], args))}
+    if len(rets) != 1:
+        return None
+    return next(c["ret"] for c in calls if repr(c["ret"]) in rets)
+
+
+def epoch_value(saved, epoch):
+    """The value of `saved` = (epoch, value) for `epoch`, or None."""
+    return saved[1] if saved is not None and saved[0] == epoch else None
 
 
 def steps_of(path, max_ops, data):
     """The steps of the first session in the trace at `path`, with the data token of each."""
-    ct1_recv = {0: None, 1: None}   # (epoch, ct1) that a party decoded at (3)
-    ct1_own = {0: None, 1: None}    # (epoch, ct1) that a party sampled at (7)
+    # (epoch, value) per party: ct1 decoded at (3), hdr decoded at (6), ek decoded at (10),
+    # and the encapsulation state and ct1 that the party sampled at (7)
+    ct1_recv, hdr_recv, ek_recv = {0: None, 1: None}, {0: None, 1: None}, {0: None, 1: None}
+    es_own, ct1_own = {0: None, 1: None}, {0: None, 1: None}
     out = []
     for es in operations(path):
         op = es[0]["op"]
@@ -434,12 +449,14 @@ def steps_of(path, max_ops, data):
         enc2 = [e for e in es if e["f"] == "mlkem.encaps2"]
         ekm = [e for e in es if e["f"] == "mlkem.ek_matches_header"]
         if st["f"] == "States::send" and pre[0] == LAB["HeaderReceived"] and enc1:
+            es_own[p] = (pre[1], hexb(enc1[0]["ret"][0]))
             ct1_own[p] = (pre[1], hexb(enc1[0]["ret"][1]))
 
-        def own_ct1(epoch):
-            """The ct1 that this party sampled at (7) in `epoch`, or None."""
-            c = ct1_own[p]
-            return c[1] if c is not None and c[0] == epoch else None
+        def ct_parts(epoch, ek):
+            """ct1 and ct2 of MacCt at (9), (11) and (12): the ct1 of (7), and the result of
+            the `encaps2` call on `ek` and the encapsulation state of (7)."""
+            ct2 = pick(enc2, ek, epoch_value(es_own[p], epoch))
+            return [epoch_value(ct1_own[p], epoch), None if ct2 is None else hexb(ct2)]
 
         def mac_tok(label, epoch, parts, received_mac, code_ok):
             """Token of a MAC computation or check."""
@@ -502,24 +519,26 @@ def steps_of(path, max_ops, data):
                         c1 = ct1_recv[p][1] if ct1_recv[p] and ct1_recv[p][0] == e else None
                         tok = mac_tok(CT_LABEL, e, [c1, msg[:CT2_SIZE]], msg[CT2_SIZE:], ok)
                     elif lab == LAB["NoHeaderReceived"]:
+                        hdr_recv[p] = (e, msg[:HDR_SIZE])
                         tok = mac_tok(HDR_LABEL, e, [msg[:HDR_SIZE]], msg[HDR_SIZE:], ok)
                     else:
+                        # the check of the decoded ek against the header of (6)
                         if data == "control":
                             ek_ok = ok
-                        elif not ekm:
-                            ek_ok = None
                         else:
-                            ek_ok = bool(ekm[0]["ret"])
+                            ek_ok = pick(ekm, msg, epoch_value(hdr_recv[p], e))
                         if ek_ok is None:
                             tok = T_MISS
                         elif not ek_ok:
                             tok = T_BAD
                         elif lab == LAB["Ct1Sampled"] and k == KIND["ek"]:
+                            ek_recv[p] = (e, msg)
                             tok = T_OK                                       # (10)
                         else:                                                # (9), (11)
-                            tok = mac_tok(CT_LABEL, e, [own_ct1(e), ct2_of(enc2)], None, ok)
+                            tok = mac_tok(CT_LABEL, e, ct_parts(e, msg), None, ok)
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
-                tok = mac_tok(CT_LABEL, e, [own_ct1(e), ct2_of(enc2)], None, ok)   # (12)
+                tok = mac_tok(CT_LABEL, e, ct_parts(e, epoch_value(ek_recv[p], e)), None,
+                              ok)                                            # (12)
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,

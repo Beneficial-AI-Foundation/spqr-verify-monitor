@@ -13,13 +13,14 @@ operation (`mac_obs`). Veil sees only that observation, not the bytes.
 A step that repeats the previous step of the same party and leaves its state unchanged is
 dropped: in SpqrBraid it is enabled again and changes nothing, so the query keeps its answer.
 
-`search` checks the steps in windows of `--window` steps. Each window is a query from the
-SpqrBraid state that the log gives before it (each party's state and epoch, and the messages
-sent so far), so an answer covers each window from its logged start state, not one run over
-all windows. The first unsatisfiable window is bisected to find its first step with no model.
+`--steps N` counts the kept steps, after this compression. `search` checks them in windows of
+`--window` steps. Each window is a query from the SpqrBraid state that the log gives before it
+(each party's state and epoch, and the messages sent in an epoch at least the smaller of the two
+parties' epochs; every other `sent` entry is false), so an answer covers each window from its
+logged start state, not one run over all windows. The first unsatisfiable window is bisected to find its first step with no model.
 
 Modes:
-  query   print one `sat trace` over the first N steps (all steps by default)
+  query   print one `sat trace` over the first N kept steps (all steps by default)
   check   run that query in Lean
   search  windowed queries up to the first step with no model
 

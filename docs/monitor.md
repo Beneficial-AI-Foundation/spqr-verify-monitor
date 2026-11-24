@@ -171,9 +171,11 @@ lake env lean --run Monitor/Main.lean /tmp/spqr-traces/*.jsonl
 
 The `rm` removes the traces of earlier runs, which the monitor would also read. The feature run
 writes one JSONL file per test thread that drives the instrumented SPQR `States` machine through
-the test harness. The monitor prints
-one line per party (`ACCEPTED` or `REJECTED` with the operation and the reason) and one line per
-cross-party check, and ends with `ALL CHECKS PASSED` (exit 0) or `SOME CHECKS FAILED` (exit 1).
+the test harness. The monitor prints one line per party (`ACCEPTED`, or `REJECTED` with the
+reason and, when there is one, the operation) and one line per cross-party check. When an epoch
+has a key from one party only, a further line lists those epochs. It ends with
+`ALL CHECKS PASSED` (exit 0) or `SOME CHECKS FAILED` (exit 1). A file that does not parse stops
+the program with an error and no verdict.
 The interpreted run takes about 4 minutes for all traces. Run the monitor under a memory cap if
 the machine has little memory.
 
@@ -195,7 +197,7 @@ runs the monitor on the new traces:
 
 ```bash
 O=$(mktemp -d)
-scripts/monitor-mutants.sh $O
+scripts/monitor-mutants.sh "$O"
 ```
 
 The script refuses an output directory that already has a case, so each run uses a new one.
@@ -207,9 +209,9 @@ the full monitor report. To count the rejected parties of the standard and the t
 one report:
 
 ```bash
-awk '/^[^ ].*\.jsonl: /{t=($0~/tamper/)?"tamper":"standard"} /: REJECTED/{r[t]++}
+awk '/^[^ ].*\.jsonl: /{t=($0~/tamper/)?"tamper":"standard"} / party [AB]: REJECTED/{r[t]++}
   / party [AB]: /{n[t]++} END{for(k in n) print k ": " r[k]+0 "/" n[k] " parties rejected"}' \
-  $O/r4-verify-result-dropped/report.txt
+  "$O/r4-verify-result-dropped/report.txt"
 ```
 
 Result on the branch (2026-11-21). "Standard" is the eleven standard traces (22 parties).
@@ -272,7 +274,7 @@ Prerequisites:
 
 - UPPAAL `verifyta` (tested with 5.1.0-beta5), with a working license. Set `VERIFYTA` to its
   path. To make sure that the license works, run one query, for example
-  `python3 -I scripts/uppaal/spqr_uppaal.py check $O/honest/traces/v1.test.chaos.jsonl --party A
+  `python3 -I scripts/uppaal/spqr_uppaal.py check "$O/honest/traces/v1.test.chaos.jsonl" --party A
   --max-ops 100`.
 - For the Veil column, a built Veil checkout (tested with https://github.com/verse-lab/veil at
   commit `4624379`; see `viz/veil/README.md`). Set `VEIL_DIR` to it. Veil runs Lean under
@@ -280,7 +282,7 @@ Prerequisites:
   script runs UPPAAL only.
 
 ```bash
-VERIFYTA=/opt/uppaal/lib/app/bin/verifyta VEIL_DIR=~/veil scripts/viz-compare.sh $O
+VERIFYTA=/opt/uppaal/lib/app/bin/verifyta VEIL_DIR=~/veil scripts/viz-compare.sh "$O"
 ```
 
 UPPAAL takes a few seconds. Veil takes about 30 minutes.
@@ -327,7 +329,7 @@ itself. `scripts/monitor-figures.sh` draws the six trace figures of the slides f
 section 5, and writes them to `docs/monitor-slides/fig/`:
 
 ```bash
-scripts/monitor-figures.sh $O
+scripts/monitor-figures.sh "$O"
 latexmk -lualatex -cd docs/monitor-slides/slides.tex
 ```
 

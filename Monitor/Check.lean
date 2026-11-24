@@ -530,18 +530,20 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
   let toMap (ks : List Key) : Except String (HashMap Nat Bytes) :=
     ks.foldlM (init := {}) fun m (ep, s) =>
       if m.contains ep then .error s!"two keys for epoch {ep}" else .ok (m.insert ep s)
-  let keys : Except String Unit × List Nat := match toMap ka, toMap kb with
-    | .error err, _ => (.error s!"party A: {err}", [])
-    | _, .error err => (.error s!"party B: {err}", [])
+  let keys : Except String Unit := match toMap ka, toMap kb with
+    | .error err, _ => .error s!"party A: {err}"
+    | _, .error err => .error s!"party B: {err}"
     | .ok ma, .ok mb =>
-      let eps := (ma.keys ++ mb.keys.filter (!ma.contains ·)).mergeSort
       let differs (ep : Nat) : Bool := match ma[ep]?, mb[ep]? with
         | some a, some b => a != b
         | _, _ => false
-      let r := match eps.find? differs with
-        | some ep => .error s!"epoch {ep}: the parties' secrets differ"
-        | none => .ok ()
-      (r, eps.filter fun ep => !(ma.contains ep && mb.contains ep))
-  ⟨delivery, keys.1, keys.2, randomness⟩
+      match ma.keys.mergeSort.find? differs with
+      | some ep => .error s!"epoch {ep}: the parties' secrets differ"
+      | none => .ok ()
+  let ea : HashSet Nat := .ofList (ka.map (·.1))
+  let eb : HashSet Nat := .ofList (kb.map (·.1))
+  let incomplete := (ea.toList ++ eb.toList.filter (!ea.contains ·)).mergeSort.filter
+    fun ep => !(ea.contains ep && eb.contains ep)
+  ⟨delivery, keys, incomplete, randomness⟩
 
 end Monitor

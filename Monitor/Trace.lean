@@ -137,7 +137,10 @@ def parseObs (e : Event) (r : Bytes) : Except String (Obs MChunk) := do
     return .send r m k l ep
   | "States::recv" =>
     let m ← parseMsg (← arg e.args 2)
-    if (e.ret.getObjVal? "err").isOk then return .recvErr m
+    if (e.ret.getObjVal? "err").isOk then
+      if ["key", "state", "epoch"].any fun f => (e.ret.getObjVal? f).isOk then
+        throw "States::recv returned an error and a result"
+      return .recvErr m
     let (k, l, ep) ← parseResult e.ret
     return .recvOk m k l ep
   | f => throw s!"{f} is not a step event"

@@ -45,7 +45,7 @@ from xml.sax.saxutils import escape
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
-                        KIND_ALIASES,
+                        KIND_ALIASES, check_operation,
                         KINDS, LABELS, STEP_FUNCS, mac_input, operations, short_label)
 
 VERIFYTA = os.environ.get("VERIFYTA", "/opt/uppaal/lib/app/bin/verifyta.sh")
@@ -70,7 +70,8 @@ DIR_NAMES = ["SEND", "RECV", "RECV_ERR"]
 def declarations(trace_mode, check_delivery, nsteps=0):
     return f"""// ML-KEM Braid (Model.lean) over abstract data. See scripts/uppaal/README.md.
 const bool TRACE = {"true" if trace_mode else "false"};   // an observer drives the steps
-const bool CHECK_DELIVERY = {"true" if check_delivery else "false"}; // receive only sent messages
+// receive only sent messages; in trace mode a `none` message needs no prior send
+const bool CHECK_DELIVERY = {"true" if check_delivery else "false"};
 
 const int A = 0;
 const int B = 1;
@@ -437,13 +438,11 @@ def steps_of(path, max_ops, data, party=None):
         op = es[0]["op"]
         if max_ops is not None and op > max_ops:
             break   # operations come in increasing order within a session
+        check_operation(es)   # also for the other party's operations
         p = 0 if es[0]["p"] == "A" else 1
         if party is not None and p != party:
             continue
         st = es[-1]
-        if st["f"] not in STEP_FUNCS or sum(e["f"] in STEP_FUNCS for e in es) != 1:
-            raise SystemExit(f"op {op} (line {es[0]['line']}): an operation needs exactly one "
-                             "step event, at its end")
         pre = (LAB[st["args"][0]], st["args"][1])
         r = st["ret"]
         hmacs = [e for e in es if e["f"] == "hmac"]
@@ -551,8 +550,6 @@ def steps_of(path, max_ops, data, party=None):
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
                 tok = mac_tok(CT_LABEL, e, ct_parts(e, epoch_value(ek_recv[p], e)), None,
                               True)                                          # (12)
-        if not ok and any(f in r for f in ("key", "state", "epoch")):
-            tok = T_MISS   # a failed receive that also reports a result has no model step
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,

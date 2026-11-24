@@ -43,7 +43,7 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))
 from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
-                        KIND_ALIASES, LABELS, STEP_FUNCS, mac_input, operations)
+                        KIND_ALIASES, LABELS, check_operation, mac_input, operations)
 
 MEM = "12G"
 MODEL = os.path.join(HERE, "SpqrBraid.lean")
@@ -99,10 +99,8 @@ def rel_of(msg_epoch: int, epoch: int) -> str:
 def steps(path: str, session: int, any_mac_form: bool = False):
     """The step observations of one session, in file order."""
     for ops in operations(path, session):
+        check_operation(ops)
         e = ops[-1]
-        if e["f"] not in STEP_FUNCS or sum(x["f"] in STEP_FUNCS for x in ops) != 1:
-            raise SystemExit(f"op {ops[0]['op']} (line {ops[0]['line']}): an operation needs "
-                             "exactly one step event, at its end")
         n = e["line"]
         pre_label, pre_epoch = e["args"][0], e["args"][1]
         ret = e["ret"]
@@ -122,10 +120,7 @@ def steps(path: str, session: int, any_mac_form: bool = False):
         else:
             st.update(kind=VEIL_KINDS[msg["kind"]], rel=rel_of(msg["epoch"], pre_epoch))
             if "err" in ret:
-                # A failed receive that also reports a result gets a key, which no failing
-                # action emits, so its window is unsatisfiable.
-                mixed = any(f in ret for f in ("key", "state", "epoch"))
-                st.update(action="recvErr", key=mixed,
+                st.update(action="recvErr", key=False,
                           label=VEIL_LABELS[pre_label], epoch=pre_epoch)
             else:
                 st.update(action="recv", key=ret["key"] is not None,

@@ -273,9 +273,9 @@ the standard traces change from run to run (section 4).
 trace, in the UPPAAL model and in the Veil model. It prints one row per party with the operation
 where the Lean monitor and UPPAAL reject, and one row per case for Veil, which replays both
 parties together: the party and operation of the first rejection in trace order, or
-"windows satisfiable" with the party column `AB`. If the Lean monitor accepts both parties of a
-mutant trace, because the run did not reach the changed step, the replays of that trace do not
-run. The UPPAAL column gives the operation
+"windows satisfiable" with the party column `AB`. If the Lean report gives no rejected operation
+for a mutant trace, for example because the run did not reach the changed step, the replays of
+that trace do not run. The UPPAAL column gives the operation
 cutoff as "op limit": the prefix has the session's operations up to that number, and the
 replay keeps the party's steps among them. It reads the
 output directory of section 5.

@@ -8,7 +8,9 @@ monitor (`Monitor/Main.lean`) rejects a trace that breaks these two rules. An op
 code under test ends with its step event (`States::send` or `States::recv`).
 
 This module is imported by `scripts/trace-viewer.py`, `scripts/uppaal/spqr_uppaal.py` and
-`viz/veil/trace2veil.py`. It is not a command.
+`viz/veil/trace2veil.py`. Run as a command, it reads a Lean monitor report (`main`):
+`verdict REPORT TRACE PARTY` and `last-reject REPORT TRACE [PARTY]`, used by
+`scripts/viz-compare.sh` and `scripts/monitor-figures.sh`.
 """
 
 import json
@@ -75,6 +77,26 @@ def operations(path, session=None):
             group.append(e)
     if group:
         yield group
+
+
+def check_operation(ops):
+    """Stop with an error unless the operation `ops` (from `operations`) is well formed, by the
+    rules of the Lean monitor's reader: all its events have one party, it has exactly one step
+    event, at its end, and the step result is an object that has either an error string `err`
+    and no `key`, `state` or `epoch`, or no `err`."""
+    where = f"op {ops[0]['op']} (line {ops[0]['line']})"
+    if len({e["p"] for e in ops}) != 1:
+        raise SystemExit(f"{where}: events of two parties")
+    if ops[-1]["f"] not in STEP_FUNCS or sum(e["f"] in STEP_FUNCS for e in ops) != 1:
+        raise SystemExit(f"{where}: an operation needs exactly one step event, at its end")
+    r = ops[-1]["ret"]
+    if not isinstance(r, dict):
+        raise SystemExit(f"{where}: the step result is not an object")
+    if "err" in r:
+        if not isinstance(r["err"], str):
+            raise SystemExit(f"{where}: the error is not a string")
+        if any(f in r for f in ("key", "state", "epoch")):
+            raise SystemExit(f"{where}: an error and a result")
 
 
 def op_at_line(path, n):

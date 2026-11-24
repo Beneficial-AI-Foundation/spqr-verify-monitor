@@ -2,7 +2,8 @@
 <!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
 <nta><declaration>// ML-KEM Braid (Model.lean) over abstract data. See scripts/uppaal/README.md.
 const bool TRACE = false;   // an observer drives the steps
-const bool CHECK_DELIVERY = true; // receive only sent messages
+// receive only sent messages; in trace mode a `none` message needs no prior send
+const bool CHECK_DELIVERY = true;
 
 const int A = 0;
 const int B = 1;

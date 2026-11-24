@@ -249,9 +249,9 @@ def match_messages(ops):
     Sends and receives are matched in file order. Each (sender, message) pair has a queue of
     sends that are not yet delivered, and a receive takes the oldest send of its message. A
     receive whose operation has a `tamper` event `[orig, copy]` got a tampered copy of `orig`;
-    it is a tampered delivery of the oldest send of `orig`. When the code rejects the copy, the
-    tamper driver (`src/test/orchestrator/tamper.rs`) later delivers the original, so that send
-    stays in its queue.
+    it is a tampered delivery of the oldest send of `orig`. That send stays in its queue, for a
+    later receive of the original if the trace has one: `tamper_chaos` delivers the original
+    when the code rejects the copy (`src/test/orchestrator/tamper.rs`).
     """
     pending, deliveries = {}, {}
     for o in ops:

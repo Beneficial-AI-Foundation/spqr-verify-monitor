@@ -139,9 +139,10 @@ for c in "${CASES[@]}"; do
     if [ -z "$first_op" ] || (( op < first_op )); then first_op=$op; first_party=$p; fi
   done
   if (( case_ops == 0 )); then
-    # the run did not reach the changed step: no replay bound, so the replays do not run
+    # no rejected operation (the run did not reach the changed step, or the rejection names
+    # none): no replay bound, so the replays do not run
     for p in A B; do
-      row "$mut" "$trace" "$p" accepted "not run (no Lean rejection)" - -
+      row "$mut" "$trace" "$p" "$(fmt "${lean[$p]}")" "not run (no rejected operation)" - -
     done
     unset lean
     continue

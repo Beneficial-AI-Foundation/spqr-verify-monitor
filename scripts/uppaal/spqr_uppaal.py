@@ -661,6 +661,15 @@ def build(args):
         sys.exit(f"{args.trace}: no session {args.session if args.session else ''} in the trace")
     # an existing session with no selected step (the party has not acted yet) is an empty run
     global EMAX
+    # A party's epoch grows by at most 1 per step, so an epoch above the number of steps plus 2
+    # has no model run; clamp it, and give the step T_MISS, so that the observer rejects it
+    # there and the model's arrays stay small.
+    bound = len(steps) + 2
+    for s in steps:
+        if max(s.mep, s.epoch, s.key, s.pre[1]) > bound:
+            s.tok = T_MISS
+            s.mep, s.epoch, s.key = min(s.mep, bound), min(s.epoch, bound), min(s.key, bound)
+            s.pre = (s.pre[0], min(s.pre[1], bound))
     # epochs are bounded by the trace
     EMAX = max([3] + [max(s.mep, s.epoch, s.key, s.pre[1]) for s in steps])
     return steps

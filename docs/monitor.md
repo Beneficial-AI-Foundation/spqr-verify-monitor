@@ -34,8 +34,10 @@ The other material on the branch illustrates these results. In the mutant compar
   input against the model's formula and passes a token. UPPAAL gets a missing token when no
   input matches, and a bad token when the received tag differs from the computed one. Veil gets
   `absent`, `good` or `bad`: `bad` when the input does not have the form of the MAC input of
-  the step, at (5) when its `ct1 || ct2` differs from the arguments of every logged `decaps`,
-  or at (9), (11) and (12) when its `ct2` differs from the result of every logged `encaps2`. Veil
+  the step, at (5) when the operation logged `decaps` calls and its `ct1 || ct2` differs from
+  the arguments of every one, or at (9), (11) and (12) when it logged `encaps2` calls and its
+  `ct2` differs from the result of every one. Without such calls, Veil does not compare the
+  ciphertexts. Veil
   does not compare tags. Section 7 compares the operations
   where they reject with the Lean monitor.
 - `docs/monitor-slides/` is a Beamer talk (`latexmk -lualatex -cd docs/monitor-slides/slides.tex`).

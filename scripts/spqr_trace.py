@@ -49,8 +49,9 @@ def short_label(label):
 
 
 def mac_input(label, epoch, body):
-    """The MAC input of §2.4 for `label` (HDR_LABEL or CT_LABEL), `epoch` and `body`."""
-    return PROTOCOL_INFO + label + epoch.to_bytes(8, "big") + body
+    """The MAC input of §2.4 for `label` (HDR_LABEL or CT_LABEL), `epoch` and `body`. The epoch
+    is encoded in 8 big-endian bytes, modulo 2^64, as `be64` in the Lean monitor."""
+    return PROTOCOL_INFO + label + (epoch % 2**64).to_bytes(8, "big") + body
 
 
 def operations(path, session=None, max_op=None):

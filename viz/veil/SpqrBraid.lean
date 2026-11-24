@@ -22,7 +22,7 @@ What it drops:
 - The MAC equality. A MAC check is an observation `mac` of the operation: `absent` (no MAC
   call), `good` (every MAC call has input of the §2.4 form that the step computes, `MacHdr`
   at (1) and (6) and `MacCt` otherwise, and a `MacCt` input matches the
-  ciphertexts of a logged `decaps`, or its `ct2` part the result of a logged `encaps2`) or
+  ciphertexts of one logged `decaps`, and its `ct2` part the result of one logged `encaps2`) or
   `bad`. `trace2veil.py` decides this outside Veil. Whether the MAC value matches is not
   modeled: a failed check (`err_mac`) needs only a `good` call.
 - The `ek` integrity check. Its result is not modeled: `err_ek` needs only a state that checks

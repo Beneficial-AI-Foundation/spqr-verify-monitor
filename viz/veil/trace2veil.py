@@ -33,6 +33,7 @@ Usage (`check` and `search` run `lake lean` in a built Veil checkout, under a me
 
 import argparse
 import itertools
+import json
 import os
 import subprocess
 import sys
@@ -43,7 +44,8 @@ from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "..", "scripts"))
 from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
-                        KIND_ALIASES, LABELS, check_operation, mac_input, operations)
+                        KIND_ALIASES, LABELS, check_operation, mac_input, number,
+                        operations)
 
 MEM = "12G"
 MODEL = os.path.join(HERE, "SpqrBraid.lean")
@@ -59,21 +61,21 @@ PARTIES = {"A": "pA", "B": "pB"}
 def mac_input_ok(data: bytes, epoch: int, ops: list, hdr: bool) -> bool:
     """Whether an HMAC input has the form of MacHdr (`hdr`) or MacCt (§2.4) for `epoch`:
     PROTOCOL_INFO, the label, the epoch as 8 big-endian bytes, then the header (64 bytes) or
-    ct1 || ct2 (960 + 128 bytes). For MacCt, when the operation logged decaps or encaps2,
-    the ciphertext bytes must also be the ones of that call."""
+    ct1 || ct2 (960 + 128 bytes). For MacCt, when the operation logged decaps calls, ct1 || ct2
+    must be the ciphertexts of one of them, and when it logged encaps2 calls, ct2 must be the
+    result of one of them. Veil does not track the key and the encapsulation state, so it does
+    not pick the call that the model makes (UPPAAL does)."""
     forms = [(HDR_LABEL, HDR_SIZE)] if hdr else [(CT_LABEL, CT1_SIZE + CT2_SIZE)]
     for lab, size in forms:
         prefix = mac_input(lab, epoch, b"")
         if data.startswith(prefix) and len(data) == len(prefix) + size:
             if lab == CT_LABEL:
                 ct = data[len(prefix):]
-                for e in ops:
-                    if e["f"] == "mlkem.decaps":
-                        if ct != bytes.fromhex(e["args"][1]) + bytes.fromhex(e["args"][2]):
-                            return False
-                    if e["f"] == "mlkem.encaps2":
-                        if ct[CT1_SIZE:] != bytes.fromhex(e["ret"]):
-                            return False
+                dec = [bytes.fromhex(e["args"][1]) + bytes.fromhex(e["args"][2])
+                       for e in ops if e["f"] == "mlkem.decaps"]
+                enc = [bytes.fromhex(e["ret"]) for e in ops if e["f"] == "mlkem.encaps2"]
+                if (dec and ct not in dec) or (enc and ct[CT1_SIZE:] not in enc):
+                    return False
             return True
     return False
 
@@ -88,6 +90,16 @@ def mac_obs(ops: list, epoch: int, any_mac_form: bool, hdr: bool) -> str:
     if any_mac_form:
         return "good"
     return "good" if all(mac_input_ok(c, epoch, ops, hdr) for c in calls) else "bad"
+
+
+def operations0(path: str, session: int):
+    """The events of `session` in the trace at `path`, including operation 0, lazily."""
+    with open(path) as f:
+        for line in f:
+            if line.strip():
+                e = json.loads(line, parse_float=number)
+                if e.get("s") == session:
+                    yield e
 
 
 def rel_of(msg_epoch: int, epoch: int) -> str:
@@ -317,7 +329,14 @@ def main():
             sys.exit(f"--{name} must be at least 1")
     sts = list(itertools.islice(compress(steps(a.trace, a.session, a.any_mac_form)), a.steps))
     if not sts:
-        sys.exit(f"{a.trace}: session {a.session} has no step events")
+        if not any(o for o in operations0(a.trace, a.session)):
+            sys.exit(f"{a.trace}: no session {a.session} in the trace")
+        # an existing session with no step (only initializations) is an empty run
+        if a.mode == "query":
+            print(query([], "replay"))
+        else:
+            print("all 0 steps satisfiable")
+        return
     print(f"{len(sts)} kept steps", file=sys.stderr)
 
     if a.mode == "query":

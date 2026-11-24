@@ -30,7 +30,11 @@ out=$(cd "$out" && pwd)
 if [ $# -eq 0 ]; then
   set -- honest $(ls mutants/*.patch | xargs -n1 basename | sed 's/\.patch$//')
 fi
-# Check every name, and that its output directory does not exist yet.
+# Check every name, that it occurs once, and that its output directory does not exist yet.
+if [ "$(printf '%s\n' "$@" | sort | uniq -d)" ]; then
+  echo "a name occurs twice" >&2
+  exit 1
+fi
 for name in "$@"; do
   if [ "$name" != honest ] && { [[ $name == */* ]] || [ ! -f "mutants/$name.patch" ]; }; then
     echo "unknown name: $name (use honest or a base name in mutants/)" >&2

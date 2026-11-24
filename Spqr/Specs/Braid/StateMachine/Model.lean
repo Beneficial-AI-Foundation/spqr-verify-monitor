@@ -45,7 +45,8 @@ incremental KEM of §1.2 with its constants, and `MAC`, `PROTOCOL_INFO`, `ToByte
 and `KDF_OK` of §2.2. `Enc`, `Dec` and `Chunk` are the types of encoders, decoders and
 codewords. `message d` is `d.message()` when `d.has_message()` holds, and `none` otherwise.
 
-The primitives that compute a value return it in the monad `M`. The model takes `M = Id`
+The functions other than `encode`, `decoderNew`, `addChunk` and `toBytes` return their value in
+the monad `M`; these four functions and the constants are total. The model takes `M = Id`
 (`Prims`). A runtime monitor takes `M = Option` (`OPrims`, `PartialModel.lean`): there a
 primitive returns `none` at an argument where its value is not known. -/
 structure MPrims (M : Type → Type) (Enc Dec Chunk : Type) where

@@ -136,7 +136,7 @@ pub fn set_party(is_a: bool) {
     SINK.with(|s| s.borrow_mut().party = Some(if is_a { 'A' } else { 'B' }));
 }
 
-/// Runs `f` with no events written.
+/// Runs `f` with the party unset, so that no events are written until `f` calls `set_party`.
 #[cfg(test)]
 pub fn paused<T>(f: impl FnOnce() -> T) -> T {
     let party = SINK.with(|s| s.borrow_mut().party.take());

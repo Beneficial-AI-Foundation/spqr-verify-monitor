@@ -15,4 +15,6 @@ pub fn hkdf_to_slice(salt: &[u8], ikm: &[u8], info: &[u8], okm: &mut [u8]) {
     hkdf::Hkdf::<sha2::Sha256>::new(Some(salt), ikm)
         .expand(info, okm)
         .expect("all lengths should work for SHA256");
+    #[cfg(feature = "monitor")]
+    crate::monitor::hkdf(salt, ikm, info, okm);
 }

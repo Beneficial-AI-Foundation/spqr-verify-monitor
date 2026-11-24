@@ -1,0 +1,26 @@
+From 339cf7493e1f080ce281de349f7c48a5b7b90271 Mon Sep 17 00:00:00 2001
+From: astefano <lacramioara.astefanoaei@gmail.com>
+Date: Thu, 19 Nov 2026 21:15:26 +0100
+Subject: [PATCH] Demo mutant: drop the result of the ciphertext MAC check
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/v1/unchunked/send_ek.rs | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/src/v1/unchunked/send_ek.rs b/src/v1/unchunked/send_ek.rs
+index cb3d9aa..d0054a8 100644
+--- a/src/v1/unchunked/send_ek.rs
++++ b/src/v1/unchunked/send_ek.rs
+@@ -157,7 +157,7 @@ pub fn recv_ct2(
+ 
+         auth.update(epoch, &ss);
+         ct1.extend_from_slice(&ct2);
+-        auth.verify_ct(epoch, &ct1, &mac)?;
++        let _ = auth.verify_ct(epoch, &ct1, &mac);
+         hax_lib::assume!(epoch < u64::MAX);
+         Ok((
+             send_ct::NoHeaderReceived {
+-- 
+2.56.0
+

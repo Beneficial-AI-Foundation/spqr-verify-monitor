@@ -1,0 +1,12 @@
+diff -ru a/src/authenticator.rs b/src/authenticator.rs
+--- a/src/authenticator.rs
++++ b/src/authenticator.rs
+@@ -93,7 +93,7 @@
+     #[hax_lib::ensures(|res| res.len() == Authenticator::MACSIZE)]
+     pub fn mac_hdr(&self, ep: Epoch, hdr: &[u8]) -> Mac {
+         let ct_mac_data = [
+-            b"Signal_PQCKA_V1_MLKEM768:ekheader".as_slice(),
++            b"Signal_PQCKA_V1_MLKEM768:ciphertext".as_slice(),
+             &ep.to_be_bytes(),
+             hdr,
+         ]

@@ -57,9 +57,9 @@ SPQR_MONITOR_DIR=/tmp/spqr-traces cargo +1.99.1 test --features monitor
 lake env lean --run Monitor/Main.lean /tmp/spqr-traces/*.jsonl
 ```
 
-The monitor prints one line per party (`ACCEPTED`, or `REJECTED` with the operation and the
-reason) and one line per cross-party check, plus a line that lists the epochs with a key from one
-party only. It ends with `ALL CHECKS PASSED` (exit 0) or
+The monitor prints one line per party (`ACCEPTED`, or `REJECTED` with the reason and, when there
+is one, the operation) and one line per cross-party check. When an epoch has a key from one party
+only, a further line lists those epochs. It ends with `ALL CHECKS PASSED` (exit 0) or
 `SOME CHECKS FAILED` (exit 1). A file that does not parse stops the program with an error and
 no verdict. On the unmodified code, it accepts every party. A log has no end
 marker, so an acceptance covers only the recorded steps. To run the demo mutants, read

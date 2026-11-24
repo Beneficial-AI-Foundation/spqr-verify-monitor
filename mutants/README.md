@@ -18,11 +18,11 @@ To run all of them, use `scripts/monitor-mutants.sh` from the repository root, a
 
 ```bash
 O=$(mktemp -d)
-scripts/monitor-mutants.sh $O
+scripts/monitor-mutants.sh "$O"
 ```
 
 The script runs the monitor under `systemd-run --user --scope -p MemoryMax=16G`, which needs a
-user service manager. Without one, run `SPQR_MONITOR_MEMCAP=0 scripts/monitor-mutants.sh $O`.
+user service manager. Without one, run `SPQR_MONITOR_MEMCAP=0 scripts/monitor-mutants.sh "$O"`.
 `$O/summary.txt` has one line per case, and `$O/<name>/report.txt` has the monitor report.
 
 Result of a run on 2026-11-21. "Standard" is the eleven standard traces (22 parties). "Tamper"

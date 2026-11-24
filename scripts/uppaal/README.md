@@ -44,11 +44,14 @@ the operation, at one of three levels (`--data`):
 In every mode, a step that needs a decoder result gets `T_MISS` unless the
 operation logged exactly one `decoder.message` event.
 
-Before it translates a step, the script checks that each operation is well
-formed by the rules of the Lean monitor's reader (`check_event` and
+The replay assumes a log that the Lean monitor's reader accepts: checking the
+log format is the reader's job. Before it translates a step, the script
+checks the parts of the format that the translation reads (`check_event` and
 `check_operation` in `scripts/spqr_trace.py`): event fields, operation
 numbers that grow by at most 1, `init` only in operation 0, one party, one
-step event at its end, and well-formed messages, keys, states and epochs. It stops with an error at the first operation that is not.
+step event at its end, and well-formed messages, keys, states and epochs. It
+stops with an error at the first operation that breaks them. It does not
+check the shape of every primitive record or the initialization records.
 
 The script does all byte comparisons. A byte-level fault, such as a MAC over
 the wrong input, reaches UPPAAL only as `T_MISS` or `T_BAD`.

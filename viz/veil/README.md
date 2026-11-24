@@ -41,10 +41,11 @@ prints the first step with no model: its trace line, party and operation.
 One window takes about 30 seconds. `query` prints one query and `check`
 runs it. The docstring of `trace2veil.py` has all the options.
 
-Before it builds a query, the script checks that each operation is well
-formed by the rules of the Lean monitor's reader (`check_operation` in
-`scripts/spqr_trace.py`), and stops with an error at the first one that is
-not.
+The replay assumes a log that the Lean monitor's reader accepts: checking
+the log format is the reader's job. Before it builds a query, the script
+checks the parts of the format that the translation reads (`check_operation`
+in `scripts/spqr_trace.py`, as for UPPAAL), and stops with an error at the
+first operation that breaks them.
 
 Veil replays both parties of a session together. So it finds only the
 first rejection in trace order, not one rejection per party.

@@ -479,10 +479,12 @@ def sessionChecks (evs : Array Event) (ka kb : List Key) : SessionChecks := Id.r
           tampered copy"
         pending := none
     if e.f == "States::send" then
-      if let .ok m := e.ret.getObjVal? "msg" then
+      if let (.ok m, .error _) := (e.ret.getObjVal? "msg", e.ret.getObjVal? "err") then
         let k := (e.party, m.compress)
         sent := sent.insert k (sent.getD k 0 + 1)
     else if e.f == "States::recv" && delivery.isOk then
+      if e.args.size < 3 then
+        delivery := .error s!"line {e.line}: a receive without a message"
       if let some m := e.args[2]? then
         match pending with
         | some (l, _, _, c, k) =>

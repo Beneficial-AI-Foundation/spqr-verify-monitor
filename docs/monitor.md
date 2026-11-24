@@ -301,8 +301,9 @@ each window is satisfiable from its logged start state, not that one model run c
 prefix. A full session is out of reach: UPPAAL did not finish one
 honest party in 6 minutes, and Veil needs about 35 seconds per query of 12 steps.
 
-Result on the branch (2026-11-21). The operation numbers of the `chaos` cases come from the run
-of section 5 and change from run to run. In the UPPAAL column, "prefix accepted" means that the
+Result of the replays of this branch (2026-11-24) on the traces of the 2026-11-21 run. The
+operation numbers of the `chaos` cases come from that run of section 5 and change from run to
+run. In the UPPAAL column, "prefix accepted" means that the
 checked prefix is a run of the model. In the Veil column, "windows satisfiable" means that each
 window of the checked prefix is satisfiable.
 

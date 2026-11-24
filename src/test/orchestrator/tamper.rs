@@ -116,8 +116,8 @@ impl OrchestratorBase<Cka> {
     }
 
     /// Logs a `tamper` event for the tampered copy `t` of `orig` and receives `t`, which is not
-    /// taken from the queue. Records the key that the `recv` outputs. Returns whether the code
-    /// accepted `t`.
+    /// taken from the queue. Records the key that `messaging_scka_recv` outputs, if any. Returns
+    /// whether the code accepted `t`.
     fn receive_tampered(&mut self, is_alex: bool, orig: &Message, t: &Message) -> bool {
         crate::monitor::set_party(is_alex);
         crate::monitor::tamper(orig, t);

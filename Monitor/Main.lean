@@ -9,12 +9,13 @@ import Monitor.Check
 
 Usage: `spqr-monitor [--max-ops N] <trace.jsonl>...`
 
-For each file and each session in it, the program checks both parties (`Monitor.checkParty`) and the
-session-level properties (`Monitor.sessionChecks`), and prints one line per party and per check.
-Every nonempty line of a file must parse, also beyond `--max-ops`. With `--max-ops N`, the party and
-session checks use only the events up to the `N`-th operation of each session, and the program says
-so: that is partial coverage of the file. The exit code is 0 when every check of every file passes,
-3 when every check passes on a prefix (`--max-ops`), 1 when a check fails, and 2 on a usage error.
+For each file and each session in it, the program checks both parties (`Monitor.checkParty`) and
+the session-level properties (`Monitor.sessionChecks`), and prints one line per party and per
+check. Every nonempty line of a file must parse, also beyond `--max-ops`. With `--max-ops N`, the
+party and session checks use only the events up to the `N`-th operation of each session, and the
+program names each session that it cuts. The exit code is 0 when every check of every file passes,
+3 when every check passes but `--max-ops` left out events, 1 when a check fails, and 2 on a usage
+error.
 -/
 
 open Lean Std Monitor
@@ -41,8 +42,8 @@ def report (s : Nat) (what : String) (r : Except String Unit) : IO Bool := do
   | .ok () => IO.println s!"  session {s} {what}: ok"; return true
   | .error err => IO.println s!"  session {s} {what}: FAILED: {err}"; return false
 
-/-- Check one file; return whether every check passed. -/
-def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
+/-- Check one file; return whether every check passed and whether `--max-ops` left out events. -/
+def checkFile (path : String) (maxOps : Option Nat) : IO (Bool × Bool) := do
   let evs ← readEvents path
   -- the events of each session, sessions in order of their first event
   let mut index : HashMap Nat Nat := {}
@@ -54,10 +55,11 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
       index := index.insert e.session sessions.size
       sessions := sessions.push (e.session, #[e])
   let mut ok := true
+  let mut cutAny := false
   IO.println s!"{path}: {evs.size} events, {sessions.size} session(s)"
   if sessions.isEmpty then
     IO.println "  REJECTED: no events"
-    return false
+    return (false, false)
   for (s, sevs₀) in sessions do
     let mut sevs := sevs₀
     if let some n := maxOps then
@@ -67,6 +69,7 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
         IO.println s!"  session {s}: PARTIAL, only operations 0..{n} of this session are checked"
         -- keep whole operations only
         sevs := cut
+        cutAny := true
     -- only parties A and B; operations numbered 0, 1, 2, ... in file order; every operation
     -- other than the initializations (operation 0) belongs to one party
     let mut last := 0
@@ -116,7 +119,7 @@ def checkFile (path : String) (maxOps : Option Nat) : IO Bool := do
       IO.println s!"  session {s} key agreement: incomplete epochs (one party only) \
         {c.incompleteEpochs}"
     ok := (← report s "randomness reuse (outside BraidModel)" c.randomness) && ok
-  return ok
+  return (ok, cutAny)
 
 /-- Check the files given on the command line; see the module docstring for the exit code. -/
 def main (args : List String) : IO UInt32 := do
@@ -132,11 +135,14 @@ def main (args : List String) : IO UInt32 := do
   | .ok (_, []) => IO.eprintln "usage: spqr-monitor [--max-ops N] <trace.jsonl>..."; return 2
   | .ok (maxOps, files) =>
     let mut ok := true
+    let mut anyCut := false
     for f in files do
-      ok := (← checkFile f maxOps) && ok
+      let (fileOk, cut) ← checkFile f maxOps
+      ok := fileOk && ok
+      anyCut := anyCut || cut
     if !ok then
       IO.println "SOME CHECKS FAILED"; return 1
-    if maxOps.isSome then
+    if anyCut then
       IO.println "ALL CHECKS PASSED ON THE CHECKED PREFIX (partial coverage, exit code 3)"
       return 3
     IO.println "ALL CHECKS PASSED"

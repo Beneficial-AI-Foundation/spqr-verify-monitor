@@ -110,7 +110,8 @@ def Tables.add (T : Tables) : Entry → Except String Tables
   | .message d v => return { T with message := ← insertFn "decoder" T.message d v }
   | .parity enc c => return { T with parity := ← insertFn "encoder" T.parity enc c }
 
-/-- The entry of a primitive call event, or `none` for an event that is not a primitive call. -/
+/-- The entry of a primitive call event whose arguments give the primitive's input, or `none` for
+any other event. A `decoder.message` event gives `none`; `decoded` handles it. -/
 def parseCall (e : Event) : Except String (Option Entry) := do
   let a := e.args
   let triple (what : String) : Except String (Bytes × Bytes × Bytes) := do

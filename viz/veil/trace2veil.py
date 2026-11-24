@@ -3,9 +3,10 @@
 
 The trace is a JSONL file of the cargo feature `monitor` (format in `scripts/spqr_trace.py`).
 Each step event (States::send / States::recv) of one session becomes one action of
-SpqrBraid.lean (send, recv or recvErr), followed by an `assert` that pins what the trace
-logged: the party, the message type, the epoch of the message relative to the receiver,
-whether a key was emitted, and the state and epoch after the step. The assert also pins a MAC
+SpqrBraid.lean (send, recv or recvErr), between two `assert`s. The first pins the party's
+logged state and epoch before the step. The second pins what the trace logged: the party, the
+message type, the epoch of the message relative to the party's epoch, whether a key was
+emitted, and the state and epoch after the step. The assert also pins a MAC
 observation (absent, good or bad) that this script computes from the `hmac` calls of the
 operation (`mac_obs`). Veil sees only that observation, not the bytes.
 
@@ -54,12 +55,13 @@ VEIL_KINDS.update({k: VEIL_KINDS[v] for k, v in KIND_ALIASES.items()})
 PARTIES = {"A": "pA", "B": "pB"}
 
 
-def mac_input_ok(data: bytes, epoch: int, ops: list) -> bool:
-    """Whether an HMAC input has the form of MacHdr or MacCt (§2.4) for `epoch`:
+def mac_input_ok(data: bytes, epoch: int, ops: list, hdr: bool) -> bool:
+    """Whether an HMAC input has the form of MacHdr (`hdr`) or MacCt (§2.4) for `epoch`:
     PROTOCOL_INFO, the label, the epoch as 8 big-endian bytes, then the header (64 bytes) or
     ct1 || ct2 (960 + 128 bytes). For MacCt, when the operation logged decaps or encaps2,
     the ciphertext bytes must also be the ones of that call."""
-    for lab, size in ((HDR_LABEL, HDR_SIZE), (CT_LABEL, CT1_SIZE + CT2_SIZE)):
+    forms = [(HDR_LABEL, HDR_SIZE)] if hdr else [(CT_LABEL, CT1_SIZE + CT2_SIZE)]
+    for lab, size in forms:
         prefix = mac_input(lab, epoch, b"")
         if data.startswith(prefix) and len(data) == len(prefix) + size:
             if lab == CT_LABEL:
@@ -75,15 +77,22 @@ def mac_input_ok(data: bytes, epoch: int, ops: list) -> bool:
     return False
 
 
-def mac_obs(ops: list, epoch: int, any_mac_form: bool) -> str:
+def mac_obs(ops: list, epoch: int, any_mac_form: bool, hdr: bool) -> str:
     """The MAC observation of an operation: `absent` (no `hmac` call), `good` (every `hmac`
-    input passes `mac_input_ok`, or `any_mac_form` is set) or `bad`."""
+    input passes `mac_input_ok` with the form `hdr` of the step, or `any_mac_form` is set) or
+    `bad`."""
     calls = [bytes.fromhex(e["args"][1]) for e in ops if e["f"] == "hmac"]
     if not calls:
         return "absent"
     if any_mac_form:
         return "good"
-    return "good" if all(mac_input_ok(c, epoch, ops) for c in calls) else "bad"
+    return "good" if all(mac_input_ok(c, epoch, ops, hdr) for c in calls) else "bad"
+
+
+def rel_of(msg_epoch: int, epoch: int) -> str:
+    """The epoch of a message relative to the party's epoch, as SpqrBraid's `erel`."""
+    d = msg_epoch - epoch
+    return "older" if d < 0 else "same" if d == 0 else "next" if d == 1 else "later"
 
 
 def steps(path: str, session: int, any_mac_form: bool = False):
@@ -95,19 +104,21 @@ def steps(path: str, session: int, any_mac_form: bool = False):
         n = e["line"]
         pre_label, pre_epoch = e["args"][0], e["args"][1]
         ret = e["ret"]
+        send = e["f"] == "States::send"
+        msg = ret["msg"] if send and "msg" in ret else e["args"][2] if not send else None
+        # MacHdr at (1) and at (6); MacCt everywhere else
+        hdr = (send and pre_label == "KeysUnsampled") or (
+            not send and pre_label == "NoHeaderReceived" and msg["kind"] == "hdr")
         st = {"line": n, "op": e["op"], "party": e["p"],
-              "mac": mac_obs(ops, pre_epoch, any_mac_form)}
-        if e["f"] == "States::send":
+              "mac": mac_obs(ops, pre_epoch, any_mac_form, hdr)}
+        if send:
             if "err" in ret:
                 raise SystemExit(f"line {n}: send returned an error")
-            st.update(action="send", kind=VEIL_KINDS[ret["msg"]["kind"]],
-                      rel="same", key=ret["key"] is not None,
+            st.update(action="send", kind=VEIL_KINDS[msg["kind"]],
+                      rel=rel_of(msg["epoch"], pre_epoch), key=ret["key"] is not None,
                       label=VEIL_LABELS[ret["state"]], epoch=ret["epoch"])
         else:
-            msg = e["args"][2]
-            d = msg["epoch"] - pre_epoch
-            rel = "older" if d < 0 else "same" if d == 0 else "next" if d == 1 else "later"
-            st.update(kind=VEIL_KINDS[msg["kind"]], rel=rel)
+            st.update(kind=VEIL_KINDS[msg["kind"]], rel=rel_of(msg["epoch"], pre_epoch))
             if "err" in ret:
                 st.update(action="recvErr", key=False,
                           label=VEIL_LABELS[pre_label], epoch=pre_epoch)
@@ -188,7 +199,9 @@ def assertion(s) -> str:
 def query(sts, name: str) -> str:
     body = []
     for s in sts:
+        p = PARTIES[s["party"]]
         body.append(f"  -- line {s['line']}, party {s['party']}, op {s['op']}")
+        body.append(f"  assert (lab {p} = {s['pre'][0]} ∧ ep {p} = {s['pre'][1]})")
         body.append(f"  {arm(s)}")
         body.append(f"  {assertion(s)}")
     # An unsatisfiable query is reported as information, so that Lean exits 0 for both verdicts.
@@ -225,7 +238,8 @@ def init_block(state) -> str:
     lab, ep, sent = state
     lines = ["after_init {",
              f"  lab P := if P = pA then {lab['A']} else {lab['B']}",
-             f"  ep P := if P = pA then {ep['A']} else {ep['B']}"]
+             f"  ep P := if P = pA then {ep['A']} else {ep['B']}",
+             "  sent P K E := false"]
     lines += [f"  sent {p} {k} {e} := true" for p, k, e in sent]
     lines += ["  lastParty := pA", "  lastKind := kNone", "  lastRel := same",
               "  lastMac := absent", "  lastKey := false", "}"]

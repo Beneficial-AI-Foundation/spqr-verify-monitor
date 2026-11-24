@@ -14,7 +14,9 @@ The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
   model's input; see `--data`).
 
 This script computes the token of each step from the logged calls and bytes. UPPAAL sees
-only the token: a wrong MAC input or a MAC mismatch reaches the model as BAD or MISS.
+only the token. With `--data formula` (the default), the script looks for an `hmac` call with
+the model's MAC input, so a wrong MAC input reaches the model as MISS and a MAC mismatch as
+BAD; `control` and `calls` pass the code's own verdict.
 
 Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 
@@ -511,10 +513,12 @@ def steps_of(path, max_ops, data, party=None, session=None):
                 raise SystemExit(f"op {op}: send returned an error")
             m = r["msg"]
             # a decoder result in a send has no model step
-            tok = T_MISS if enc1_miss or decoded else T_NONE
+            tok = T_MISS if enc1_miss else T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else None
                 tok = mac_tok(HDR_LABEL, pre[1], [hdr], None, True)
+            if decoded:
+                tok = T_MISS   # a decoder result in a send has no model step
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, SEND, KIND[m["kind"]], m["epoch"], tok, LAB[r["state"]],
                             r["epoch"], key, st["line"], pre))

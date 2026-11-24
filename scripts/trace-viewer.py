@@ -78,9 +78,7 @@ class Op:
 def load(path, session, hi):
     """The operations of `session` up to operation `hi`; reading stops there."""
     out = []
-    for events in operations(path, session):
-        if events[0]["op"] > hi:
-            break
+    for events in operations(path, session, max_op=hi):
         out.append(Op(events))
     return out
 

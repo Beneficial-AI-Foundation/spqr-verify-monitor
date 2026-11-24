@@ -56,17 +56,25 @@ def operations(path, session=None):
     """Yield the operations of one session of the trace at `path`, in file order.
 
     Each operation is the list of its events. Each event gets a key `line` with its line number
-    in the file. Operation 0 is skipped. With `session=None`, the session of the first event is
+    in the file. Operation 0 is skipped. Every event must pass `check_event`, and in each
+    session the operation numbers must start at 0 and grow by at most 1, as the Lean monitor
+    requires. With `session=None`, the session of the first event is
     used. The file is read once, line by line.
     """
     group, group_op = [], None
+    last = {}   # the last operation number of each session
     with open(path) as f:
         for n, line in enumerate(f, 1):
             if not line.strip():
                 continue
             e = json.loads(line)
+            check_event(e, n)
             if session is None:
                 session = e["s"]
+            prev = last.get(e["s"], 0)
+            if e["op"] not in (prev, prev + 1):
+                raise SystemExit(f"line {n}: operation {e['op']} after operation {prev}")
+            last[e["s"]] = e["op"]
             if e["s"] != session or e["op"] == 0:
                 continue
             if e["op"] != group_op and group:
@@ -79,24 +87,79 @@ def operations(path, session=None):
         yield group
 
 
+def _nat(x):
+    return isinstance(x, int) and not isinstance(x, bool) and x >= 0
+
+
+def _hex(x):
+    return isinstance(x, str) and len(x) % 2 == 0 and re.fullmatch(r"[0-9a-f]*", x) is not None
+
+
+def check_event(e, n):
+    """Stop with an error unless the event `e` on line `n` has the fields that the Lean
+    monitor's reader requires: natural `s` and `op`, party `A` or `B`, a string `f`, an array
+    `args` and a `ret`, and `init` only in operation 0."""
+    if not (isinstance(e, dict) and _nat(e.get("s")) and _nat(e.get("op"))
+            and e.get("p") in ("A", "B") and isinstance(e.get("f"), str)
+            and isinstance(e.get("args"), list) and "ret" in e):
+        raise SystemExit(f"line {n}: not an event of the monitor log")
+    if e["f"] == "init" and e["op"] != 0:
+        raise SystemExit(f"line {n}: an init event in operation {e['op']}")
+
+
+def check_msg(m):
+    """Whether `m` is a message as the Lean reader parses it: a natural `epoch`, a known
+    `kind`, and for a chunk kind a natural `index` and hex `data`."""
+    if not (isinstance(m, dict) and _nat(m.get("epoch"))):
+        return False
+    k = m.get("kind")
+    if k in ("none", "ct1ackfalse", "ct1ack"):
+        return True
+    return k in KINDS and _nat(m.get("index")) and _hex(m.get("data"))
+
+
+def check_result(r):
+    """Whether `r` is a step result: a key (null or a natural `epoch` and hex `secret`), a
+    known `state` and a natural `epoch`."""
+    if not (isinstance(r, dict) and all(f in r for f in ("key", "state", "epoch"))):
+        return False
+    k = r["key"]
+    key_ok = k is None or (isinstance(k, dict) and _nat(k.get("epoch")) and _hex(k.get("secret")))
+    return key_ok and r["state"] in LABELS and _nat(r["epoch"])
+
+
 def check_operation(ops):
     """Stop with an error unless the operation `ops` (from `operations`) is well formed, by the
-    rules of the Lean monitor's reader: all its events have one party, it has exactly one step
-    event, at its end, and the step result is an object that has either an error string `err`
-    and no `key`, `state` or `epoch`, or no `err`."""
+    rules of the Lean monitor's reader: all its events have one party; it has exactly one step
+    event, at its end, with the state and epoch before the call; a receive has a well-formed
+    message (`check_msg`); and the result is either an error string with no `key`, `state` or
+    `epoch` (not for a send), or a result (`check_result`), with a well-formed message for a
+    send."""
     where = f"op {ops[0]['op']} (line {ops[0]['line']})"
     if len({e["p"] for e in ops}) != 1:
         raise SystemExit(f"{where}: events of two parties")
     if ops[-1]["f"] not in STEP_FUNCS or sum(e["f"] in STEP_FUNCS for e in ops) != 1:
         raise SystemExit(f"{where}: an operation needs exactly one step event, at its end")
-    r = ops[-1]["ret"]
+    st = ops[-1]
+    a, r = st["args"], st["ret"]
+    if not (len(a) >= 2 and a[0] in LABELS and _nat(a[1])):
+        raise SystemExit(f"{where}: the step has no state and epoch before the call")
     if not isinstance(r, dict):
         raise SystemExit(f"{where}: the step result is not an object")
+    if st["f"] == "States::recv" and not (len(a) >= 3 and check_msg(a[2])):
+        raise SystemExit(f"{where}: the receive has no well-formed message")
     if "err" in r:
+        if st["f"] == "States::send":
+            raise SystemExit(f"{where}: the send returned an error")
         if not isinstance(r["err"], str):
             raise SystemExit(f"{where}: the error is not a string")
         if any(f in r for f in ("key", "state", "epoch")):
             raise SystemExit(f"{where}: an error and a result")
+        return
+    if not check_result(r):
+        raise SystemExit(f"{where}: the step result has no well-formed key, state and epoch")
+    if st["f"] == "States::send" and not check_msg(r.get("msg")):
+        raise SystemExit(f"{where}: the send has no well-formed message")
 
 
 def op_at_line(path, n):

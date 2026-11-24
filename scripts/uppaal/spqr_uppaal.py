@@ -438,10 +438,12 @@ def steps_of(path, max_ops, data, party=None):
         op = es[0]["op"]
         if max_ops is not None and op > max_ops:
             break   # operations come in increasing order within a session
-        check_operation(es)   # also for the other party's operations
+        if len({e["p"] for e in es}) != 1:
+            check_operation(es)   # an operation with events of both parties stops the replay
         p = 0 if es[0]["p"] == "A" else 1
         if party is not None and p != party:
             continue
+        check_operation(es)
         st = es[-1]
         pre = (LAB[st["args"][0]], st["args"][1])
         r = st["ret"]

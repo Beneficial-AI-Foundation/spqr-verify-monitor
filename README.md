@@ -12,7 +12,9 @@ Maintained by [The Beneficial AI Foundation](https://www.beneficialaifoundation.
 
 This fork of [Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify](https://github.com/Beneficial-AI-Foundation/SparsePostQuantumRatchet-verify)
 adds a runtime monitor for the SPQR tests. The Rust tests write an event log, and a Lean program
-replays the events of each party through the Braid model.
+replays the events of each party through the Braid model. Read [`docs/monitor.md`](./docs/monitor.md)
+for the results, the comparison with the UPPAAL and Veil replays, and the commands that reproduce
+them.
 
 ### What the monitor checks that the proofs do not
 

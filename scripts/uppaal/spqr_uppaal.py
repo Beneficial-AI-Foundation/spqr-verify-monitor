@@ -514,7 +514,7 @@ def steps_of(path, max_ops, data):
                 (LAB["Ct1Sampled"], KIND["ekct1ack"]), (LAB["Ct1Acknowledged"], KIND["ek"]),
                 (LAB["Ct1Acknowledged"], KIND["ekct1ack"])}
             if dec_case:
-                if not decoded:
+                if len(decoded) != 1:   # no decoder result, or two that may disagree
                     tok = T_MISS
                 elif decoded[0]["ret"] is None:
                     tok = T_PART
@@ -543,10 +543,10 @@ def steps_of(path, max_ops, data):
                             ek_recv[p] = (e, msg)
                             tok = T_OK                                       # (10)
                         else:                                                # (9), (11)
-                            tok = mac_tok(CT_LABEL, e, ct_parts(e, msg), None, ok)
+                            tok = mac_tok(CT_LABEL, e, ct_parts(e, msg), None, True)
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
                 tok = mac_tok(CT_LABEL, e, ct_parts(e, epoch_value(ek_recv[p], e)), None,
-                              ok)                                            # (12)
+                              True)                                          # (12)
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,

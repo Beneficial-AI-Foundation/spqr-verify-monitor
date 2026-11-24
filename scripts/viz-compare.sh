@@ -143,7 +143,14 @@ for c in "${CASES[@]}"; do
     if (( op + MARGIN > case_ops )); then case_ops=$((op + MARGIN)); fi
     if [ -z "$first_op" ] || (( op < first_op )); then first_op=$op; first_party=$p; fi
   done
-  (( case_ops > 0 )) || fail "Lean accepts both parties of $mut $trace: no replay bound"
+  if (( case_ops == 0 )); then
+    # the run did not reach the changed step: no replay bound, so the replays do not run
+    for p in A B; do
+      row "$mut" "$trace" "$p" accepted "not run (no Lean rejection)" - -
+    done
+    unset lean
+    continue
+  fi
   if (( case_ops > max_ops )); then max_ops=$case_ops; fi
   for p in A B; do
     # A party that Lean accepts is replayed with the bound of the other party.

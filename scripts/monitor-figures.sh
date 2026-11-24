@@ -30,5 +30,12 @@ draw honest-seq seq honest v1.test.chaos.jsonl --compact --max-rows 24 --title "
 draw honest-overview overview honest v1.test.chaos.jsonl
 draw m1-seq-a seq m1-skip-verify-ct v1.test.chaos.jsonl --around-reject A --compact --radius 200 --title ""
 draw r2-seq-b seq r2-mac-le-epoch v1.test.chaos.jsonl --around-reject B --compact --radius 200 --title ""
-draw r2-overview overview r2-mac-le-epoch v1.test.chaos.jsonl --to 1200
+# the R2 overview ends 100 operations after the later rejection of session 1
+to=$(awk -v t=v1.test.chaos.jsonl '/^[^ ]/ { blk = index($0, t) > 0 }
+  blk && /session 1 party [AB]: REJECTED: operation/ {
+    match($0, /operation [0-9]+/); n = substr($0, RSTART + 10, RLENGTH - 10) + 0
+    if (n > m) m = n }
+  END { print m + 0 }' "$out/r2-mac-le-epoch/report.txt")
+[ "$to" -gt 0 ] || { echo "no rejection of session 1 in the R2 chaos report" >&2; exit 1; }
+draw r2-overview overview r2-mac-le-epoch v1.test.chaos.jsonl --to $((to + 100))
 draw r4-seq-a seq r4-verify-result-dropped v1.test.tamper_chaos.jsonl --around-reject A --compact --radius 200 --title ""

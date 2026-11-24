@@ -29,8 +29,8 @@ UPPAAL sees only the token. The script computes it from the logged calls of
 the operation, at one of three levels (`--data`):
 
 - `control`: the code's own result. The model sees only the control flow.
-- `calls`: `T_MISS` if the operation made no `hmac` call, else the code's
-  own result.
+- `calls`: `T_MISS` if the operation made no `hmac` call; else `T_OK` for
+  a MAC computation, and the code's own result for a MAC check.
 - `formula` (default): `T_MISS` if an operand (`hdr`, `ct1` or `ct2`) is
   missing or has the wrong length, or if no `hmac` call has the input of
   `MacHdr` or `MacCt` (`PROTOCOL_INFO`, the label, the big-endian epoch,
@@ -39,6 +39,9 @@ the operation, at one of three levels (`--data`):
   `T_MISS`. On a receive, `T_BAD` if the computed MAC is not
   the received MAC, and `T_MISS` if calls with that input disagree. The `ek` token is the logged result of
   `mlkem.ek_matches_header`.
+
+In every mode, a step that needs a decoder result gets `T_MISS` unless the
+operation logged exactly one `decoder.message` event.
 
 The script does all byte comparisons. A byte-level fault, such as a MAC over
 the wrong input, reaches UPPAAL only as `T_MISS` or `T_BAD`.

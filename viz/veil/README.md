@@ -31,7 +31,10 @@ python3 -I viz/veil/trace2veil.py search TRACE.jsonl --veil VEIL_DIR --steps N -
 
 `search` cuts the first N steps of session 1 into windows of 12 steps.
 Each window is one query. It starts from the state that the log gives
-before the window. The script bisects the first window with no model and
+before the window: each party's state and epoch, and the messages sent so
+far. Every other `sent` entry is false. In a query, each step is an action
+between two asserts: the first pins the party's logged state and epoch
+before the step, the second the logged result after it. The script bisects the first window with no model and
 prints the first step with no model: its trace line, party and operation.
 One window takes about 30 seconds. `query` prints one query and `check`
 runs it. The docstring of `trace2veil.py` has all the options.
@@ -45,8 +48,9 @@ the result with the Lean monitor and UPPAAL.
 ## What Veil sees of the MACs
 
 For each operation, the script gives Veil one MAC observation: `absent`
-(no `hmac` call), `good` (every `hmac` input has the form of `MacHdr` or
-`MacCt` for the epoch; a `MacCt` input must also match the `ct1 || ct2`
+(no `hmac` call), `good` (every `hmac` input has the form that the step
+computes for the epoch, `MacHdr` at transitions (1) and (6) and `MacCt`
+otherwise; a `MacCt` input must also match the `ct1 || ct2`
 arguments of a logged `decaps`, and its `ct2` part the result of a logged
 `encaps2`, when the operation has them) or `bad`. Veil does not compare MAC values: it does
 not check that the computed MAC equals the received MAC, and it does not

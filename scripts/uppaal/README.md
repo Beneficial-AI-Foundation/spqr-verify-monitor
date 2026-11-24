@@ -43,8 +43,10 @@ the wrong input, reaches UPPAAL only as `T_MISS` or `T_BAD`.
 
 `trace` and `check` add a template `Obs` that replays the first session of
 the trace. It has one location `step_k` per step: k steps matched, step k
-expected. Each edge of `Obs` checks the state after a step and announces
-the next one. `E<> Obs.done` holds if the whole trace is a run of the
+expected. Each edge of `Obs` checks the state, epoch and key after a step
+and announces the next one, with the party's logged state and epoch before
+it; a party takes the step only from that state. A key absent is -1, so a
+key of epoch 0 differs from no key. `E<> Obs.done` holds if the whole trace is a run of the
 model. `sup: matched` gives the largest k. If k is below the number of
 steps, step k is the rejected step. `check` runs `verifyta` (path in
 `$VERIFYTA`) and writes the witness of `E<> Obs.step_k` (the prefix up to
@@ -64,7 +66,9 @@ monitor report.
 
 Options: `--party A|B` replays one party and does not check delivery,
 like the per-party verdict of the Lean monitor. `--drop-idle` removes the
-steps that send or receive `none` and leave the state unchanged.
+`none` steps that the model takes as self-loops: a send from
+`NoHeaderReceived` or `Ct1Acknowledged` in the sender's epoch, and a
+successful receive of an epoch at most the receiver's, with no key.
 `--workdir DIR` sets where the model and witness go (default: a new
 temporary directory, whose path the script prints). The file name comes
 from the trace directory name, so give each trace its own `--workdir`.

@@ -270,7 +270,8 @@ the standard traces change from run to run (section 4).
 `scripts/viz-compare.sh` replays session 1 of four mutant traces, and of the honest `chaos`
 trace, in the UPPAAL model and in the Veil model. It prints one row per party with the operation
 where the Lean monitor and UPPAAL reject, and one row per case for Veil, which replays both
-parties together: the first rejection in trace order, or "AB windows satisfiable". It reads the
+parties together (party column `AB`): the first rejection in trace order, or
+"windows satisfiable". It reads the
 output directory of section 5.
 
 Prerequisites:

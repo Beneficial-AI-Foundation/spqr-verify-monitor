@@ -10,7 +10,7 @@
 #
 # For each case and party, the script prints the operation and trace line where the Lean
 # monitor and UPPAAL reject session 1, or "accepted". Veil gets one row per case, for both
-# parties: the first rejection in trace order, or "AB windows satisfiable".
+# parties (party column AB): the first rejection in trace order, or "windows satisfiable".
 #
 # Prerequisites:
 #   - python3.

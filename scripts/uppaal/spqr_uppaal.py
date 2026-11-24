@@ -16,8 +16,8 @@ The model follows `Spqr/Specs/Braid/StateMachine/Model.lean` (`send`, `receive`,
 This script computes the token of each step from the logged calls and bytes. UPPAAL sees
 only the token. With `--data formula` (the default), the script looks for an `hmac` call with
 the model's MAC input, so a wrong MAC input reaches the model as MISS and a MAC mismatch as
-BAD. `control` passes the code's own verdict; `calls` gives MISS when the operation logged no
-`hmac` call, and the code's own verdict otherwise.
+BAD. `control` passes the code's own verdict. `calls` gives MISS when the operation logged no
+`hmac` call; otherwise OK for a MAC computation, and the code's own verdict for a MAC check.
 
 Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 
@@ -49,7 +49,7 @@ from xml.sax.saxutils import escape
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 from spqr_trace import (CT_LABEL, CT1_SIZE, CT2_SIZE, HDR_LABEL, HDR_SIZE,  # noqa: E402
-                        KIND_ALIASES, check_operation,
+                        KIND_ALIASES, check_operation, number,
                         KINDS, LABELS, STEP_FUNCS, mac_input, operations, short_label)
 
 VERIFYTA = os.environ.get("VERIFYTA", "/opt/uppaal/lib/app/bin/verifyta.sh")
@@ -670,7 +670,8 @@ def session_exists(path, session):
     """Whether the trace at `path` has an event of `session` (any event if None)."""
     with open(path) as f:
         for line in f:
-            if line.strip() and (session is None or json.loads(line).get("s") == session):
+            if line.strip() and (session is None
+                                 or json.loads(line, parse_float=number).get("s") == session):
                 return True
     return False
 

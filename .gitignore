@@ -25,3 +25,6 @@ status.json
 
 # prost-generated code emitted in-tree during extraction builds (--features extraction)
 /generated/
+
+# Python bytecode
+__pycache__/

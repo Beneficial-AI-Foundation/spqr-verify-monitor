@@ -97,7 +97,7 @@ const int RECV_ERR = 2;
 // party state, readable by the observer
 int st[2] = {{KU, NHR}};
 epoch_t ep[2] = {{1, 1}};
-epoch_t key[2];          // epoch of the key output by the last step, 0 for none
+int[-1, EMAX + 1] key[2] = {{-1, -1}};  // epoch of the key output by the last step, -1 for none
 
 // network: which (epoch, kind) each party sent
 bool sent[2][EMAX + 2][{len(KINDS)}];
@@ -112,6 +112,8 @@ int[0, 2] e_dir;
 kind_t e_kind;
 epoch_t e_ep;
 tok_t e_tok;
+int e_pl;                // the logged state and epoch of the party before the step
+epoch_t e_pe;
 int[0, {max(nsteps, 1)}] matched;   // number of trace steps matched
 
 // one channel per message kind for sends, one delivery channel per receiver
@@ -151,10 +153,15 @@ bool tokOk(int t) {{
     return TRACE ? t == e_tok : (t == T_NONE || t == T_PART || t == T_OK);
 }}
 
+// party p is in the logged state before the expected step
+bool atPre(int p) {{
+    return st[p] == e_pl && ep[p] == e_pe;
+}}
+
 // a send of kind k by party p, with token t
 bool canSend(int p, int k, int t) {{
     return TRACE ? (pending && e_party == p && e_dir == SEND && e_kind == k
-                    && e_ep == ep[p] && e_tok == t)
+                    && e_ep == ep[p] && e_tok == t && atPre(p))
                  : true;
 }}
 
@@ -162,16 +169,17 @@ bool canSend(int p, int k, int t) {{
 bool canRecv(int p, int n) {{
     if (n == INVALID) return false;
     if (!TRACE) return true;
-    return n == FAIL ? e_dir == RECV_ERR : e_dir == RECV;
+    return atPre(p) && (n == FAIL ? e_dir == RECV_ERR : e_dir == RECV);
 }}
 
 void done(int p) {{
     pending = false;
 }}
 
-// the observer announces the next step of the trace
-void expect(int p, int d, int k, int e, int t) {{
-    e_party = p; e_dir = d; e_kind = k; e_ep = e; e_tok = t; pending = true;
+// the observer announces the next step of the trace, with the party's state before it
+void expect(int p, int d, int k, int e, int t, int pl, int pe) {{
+    e_party = p; e_dir = d; e_kind = k; e_ep = e; e_tok = t; e_pl = pl; e_pe = pe;
+    pending = true;
 }}
 
 // the observer checks the state after the step
@@ -223,11 +231,11 @@ SENDS = {
 
 # receive transitions that change state: (source, target, number, key, epoch increment)
 RECVS = [
-    ("KS", "HS", "(2)", "0", 0), ("HS", "C1R", "(3)", "0", 0), ("C1R", "ESC1R", "(4)", "0", 0),
-    ("ESC1R", "NHR", "(5) MAC", "ep[p]", 1), ("NHR", "HR", "(6) MAC", "0", 0),
-    ("C1S", "C1A", "(8)", "0", 0), ("C1S", "C2S", "(9) ek, MAC", "0", 0),
-    ("C1S", "ERC1S", "(10) ek", "0", 0), ("C1A", "C2S", "(11) ek, MAC", "0", 0),
-    ("ERC1S", "C2S", "(12) MAC", "0", 0), ("C2S", "KU", "(13)", "0", 1),
+    ("KS", "HS", "(2)", "-1", 0), ("HS", "C1R", "(3)", "-1", 0), ("C1R", "ESC1R", "(4)", "-1", 0),
+    ("ESC1R", "NHR", "(5) MAC", "ep[p]", 1), ("NHR", "HR", "(6) MAC", "-1", 0),
+    ("C1S", "C1A", "(8)", "-1", 0), ("C1S", "C2S", "(9) ek, MAC", "-1", 0),
+    ("C1S", "ERC1S", "(10) ek", "-1", 0), ("C1A", "C2S", "(11) ek, MAC", "-1", 0),
+    ("ERC1S", "C2S", "(12) MAC", "-1", 0), ("C2S", "KU", "(13)", "-1", 1),
 ]
 
 # hand-placed labels where the default overlaps: receive edges and self-loop shifts
@@ -254,7 +262,7 @@ bool goes(int l, int l2, int t) {
     return tokOk(t) && next(l, ep[p], d_ep, d_kind, t) == l2 && canRecv(p, l2);
 }
 
-// enter state l, output the key of epoch k (0 for none), add inc to the epoch
+// enter state l, output the key of epoch k (-1 for none), add inc to the epoch
 void move(int l, int k, int inc) {
     st[p] = l; key[p] = k; ep[p] = ep[p] + inc; done(p);
 }
@@ -273,7 +281,7 @@ def party_template():
         k, dst, num = SENDS[s]
         chan = "none_" if k == "none" else k
         tok = "T_OK" if s == "KU" else "T_NONE"   # (1) computes the header MAC
-        upd = f"move({dst}, {'ep[p]' if s == 'HR' else '0'}, 0)"
+        upd = f"move({dst}, {'ep[p]' if s == 'HR' else '-1'}, 0)"
         g = f"sends(K_{k.upper()}, {tok})"
         if s == "NHR":   # loops to the sides, away from the (5) and (6) edges
             send_nails, send_lab = [(x + 55, y - 25), (x + 55, y + 25)], (x + 30, y - 130)
@@ -292,7 +300,7 @@ def party_template():
                               comment=f"send {num}", lx=mx - 70 if s == "KU" else mx - 50,
                               ly=my + 10 if s == "KU" else my - 70))
         trans.append(edge(s, s, select="t : tok_t", guard=f"stays({s}, t)",
-                          sync="deliver[p]?", update="move(st[p], 0, 0)",
+                          sync="deliver[p]?", update="move(st[p], -1, 0)",
                           nails=recv_nails, lx=recv_lab[0], ly=recv_lab[1]))
     for src, dst, num, k, inc in RECVS:
         sx, sy = POS[src]
@@ -391,7 +399,7 @@ class Step:
         p = "A" if self.party == 0 else "B"
         msg = f"epoch {self.mep} {KINDS[self.kind]}"
         res = ("error" if self.dir == RECV_ERR else
-               f"-> {LABELS[self.label]} epoch {self.epoch}" + (f" key {self.key}" if self.key else ""))
+               f"-> {LABELS[self.label]} epoch {self.epoch}" + (f" key {self.key}" if self.key >= 0 else ""))
         return (f"op {self.op} (line {self.line}) party {p} {DIR_NAMES[self.dir].lower()} {msg} "
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
@@ -444,7 +452,7 @@ def steps_of(path, max_ops, data):
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else b""
                 tok = mac_tok(HDR_LABEL, pre[1], hdr, None, True)
-            key = r["key"]["epoch"] if r.get("key") else 0
+            key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, SEND, KIND[m["kind"]], m["epoch"], tok, LAB[r["state"]],
                             r["epoch"], key, st["line"], pre))
             continue
@@ -494,18 +502,27 @@ def steps_of(path, max_ops, data):
                 ct2 = hexb(enc2[0]["ret"]) if enc2 else b""                  # (12)
                 tok = mac_tok(CT_LABEL, e, (ct1_own[p] or b"") + ct2, None, ok)
         if ok:
-            key = r["key"]["epoch"] if r.get("key") else 0
+            key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,
                             st["line"], pre))
         else:
-            out.append(Step(op, p, RECV_ERR, k, m["epoch"], tok, pre[0], pre[1], 0, st["line"],
+            out.append(Step(op, p, RECV_ERR, k, m["epoch"], tok, pre[0], pre[1], -1, st["line"],
                             pre))
     return out
 
 
 def is_idle(s):
-    return (s.kind == KIND["none"] and s.dir != RECV_ERR and s.label == s.pre[0]
-            and s.epoch == s.pre[1])
+    """Whether step `s` is a send or receive of `none` that the model takes as a self-loop:
+    a send from NoHeaderReceived or Ct1Acknowledged in the sender's epoch, or a successful
+    receive of a message of an epoch at most the receiver's. Both leave the state unchanged,
+    with no key and no data token."""
+    if not (s.kind == KIND["none"] and s.tok == T_NONE and s.key < 0
+            and (s.label, s.epoch) == s.pre):
+        return False
+    if s.dir == SEND:
+        return (s.pre[0] in (LAB["NoHeaderReceived"], LAB["Ct1Acknowledged"])
+                and s.mep == s.pre[1])
+    return s.dir == RECV and s.mep <= s.pre[1]
 
 
 def observer_template(steps):
@@ -517,7 +534,7 @@ def observer_template(steps):
     n = len(steps)
     def expect(s):
         return (f"expect({s.party}, {DIR_NAMES[s.dir]}, K_{KINDS[s.kind].upper()}, {s.mep}, "
-                f"{TOK_NAMES[s.tok]})")
+                f"{TOK_NAMES[s.tok]}, {SHORT[s.pre[0]]}, {s.pre[1]})")
     def check(s):
         if s.dir == RECV_ERR:
             return "!pending"
@@ -567,7 +584,8 @@ def build(args):
     if not steps:
         sys.exit(f"{args.trace}: no steps selected")
     global EMAX
-    EMAX = max([3] + [max(s.mep, s.epoch) for s in steps])   # epochs are bounded by the trace
+    # epochs are bounded by the trace
+    EMAX = max([3] + [max(s.mep, s.epoch, s.key, s.pre[1]) for s in steps])
     return steps
 
 
@@ -602,8 +620,8 @@ def main():
         t.add_argument("--party", choices=["A", "B"],
                        help="replay only this party's steps, and do not check delivery")
         t.add_argument("--drop-idle", action="store_true",
-                       help="drop the steps that send or receive `none` and leave the state "
-                            "unchanged")
+                       help="drop the steps that send or receive `none` as a model self-loop "
+                            "(see is_idle)")
         t.add_argument("--data", choices=["control", "calls", "formula"], default="formula",
                        help="how to compute the MAC and `ek` tokens (default formula)")
     a = ap.parse_args()

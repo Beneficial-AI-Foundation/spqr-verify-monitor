@@ -6,9 +6,10 @@ public import Veil
 
 A hand-written abstraction of `BraidModel` (`Spqr/Specs/Braid/StateMachine/Model.lean`) for
 Veil. It is a second model, not derived from `BraidModel`: nothing links the two except that
-the actions below follow the arms of `send`, `receiveEq` and `receive` of `BraidModel` one
-by one. There is one action per arm, so that a trace query names the arm of each step: Veil's
-trace queries take action names only.
+the actions below follow the arms of `send`, `receiveEq` and `receive` of `BraidModel`. Most
+actions are one arm; `recv_chunk`, `recv_noop`, `recv_older` and the failure actions each
+cover a case that several arms share, and transitions (11) and (12) are split by message type.
+A trace query names the action of each step: Veil's trace queries take action names only.
 
 What the abstraction keeps: the eleven labels of §2.5, the epoch of each party as a `Nat`,
 the message type, the epoch of a message relative to the receiver's epoch, whether an output
@@ -138,7 +139,7 @@ action send_ct1Received (p : party) {
   lastKey := false
 }
 
-/- `send` in `ekSentCt1Received`: the next `Ct1Ack` chunk, no state change. -/
+/- `send` in `ekSentCt1Received`: a `Ct1Ack` message, with no chunk data; no state change. -/
 action send_ekSentCt1Received (p : party) {
   require lab p = ekSentCt1Received
   sent p kCt1Ack (ep p) := true
@@ -149,7 +150,7 @@ action send_ekSentCt1Received (p : party) {
   lastKey := false
 }
 
-/- `send` in `noHeaderReceived`: the next `None` chunk, no state change. -/
+/- `send` in `noHeaderReceived`: a `None` message, with no chunk data; no state change. -/
 action send_noHeaderReceived (p : party) {
   require lab p = noHeaderReceived
   sent p kNone (ep p) := true
@@ -182,7 +183,7 @@ action send_ekReceivedCt1Sampled (p : party) {
   lastKey := false
 }
 
-/- `send` in `ct1Acknowledged`: the next `None` chunk, no state change. -/
+/- `send` in `ct1Acknowledged`: a `None` message, with no chunk data; no state change. -/
 action send_ct1Acknowledged (p : party) {
   require lab p = ct1Acknowledged
   sent p kNone (ep p) := true

@@ -37,7 +37,8 @@ the operation, at one of three levels (`--data`):
   `hdr` or `ct1 || ct2`). `ct1` comes from the `encaps1` call of
   transition (7) on the header of (6); without such a call, (7) gets
   `T_MISS`. On a receive, `T_BAD` if the computed MAC is not
-  the received MAC, and `T_MISS` if calls with that input disagree. The `ek` token is the logged result of
+  the received MAC, and `T_MISS` if calls with that input disagree on whether
+  their result equals the received MAC. The `ek` token is the logged result of
   `mlkem.ek_matches_header`.
 
 In every mode, a step that needs a decoder result gets `T_MISS` unless the

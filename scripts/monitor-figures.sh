@@ -31,11 +31,7 @@ draw honest-overview overview honest v1.test.chaos.jsonl
 # The largest rejected operation of session 1 of TRACE in the report of CASE, of PARTY if given,
 # or 0.
 last_reject() {
-  awk -v t="$2" -v p="${3:-[AB]}" '/^[^ ]/ { blk = index($0, t) > 0 }
-    blk && $0 ~ ("session 1 party " p ": REJECTED: operation") {
-      match($0, /operation [0-9]+/); n = substr($0, RSTART + 10, RLENGTH - 10) + 0
-      if (n > m) m = n }
-    END { print m + 0 }' "$out/$1/report.txt"
+  python3 -I scripts/spqr_trace.py last-reject "$out/$1/report.txt" "$out/$1/traces/$2" ${3:+"$3"}
 }
 
 # A figure around a rejection needs that rejection; a run that did not reach the changed step

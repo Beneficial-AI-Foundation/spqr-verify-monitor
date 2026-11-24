@@ -551,6 +551,8 @@ def steps_of(path, max_ops, data, party=None):
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
                 tok = mac_tok(CT_LABEL, e, ct_parts(e, epoch_value(ek_recv[p], e)), None,
                               True)                                          # (12)
+        if not ok and any(f in r for f in ("key", "state", "epoch")):
+            tok = T_MISS   # a failed receive that also reports a result has no model step
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,

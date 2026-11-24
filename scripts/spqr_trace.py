@@ -12,7 +12,9 @@ This module is imported by `scripts/trace-viewer.py`, `scripts/uppaal/spqr_uppaa
 """
 
 import json
+import os
 import re
+import sys
 
 # The eleven `Label` constructors of the braid, in the order of `BraidModel`.
 LABELS = [
@@ -73,3 +75,69 @@ def operations(path, session=None):
             group.append(e)
     if group:
         yield group
+
+
+def op_at_line(path, n):
+    """The operation of the event on line `n` of the trace at `path`, or None."""
+    with open(path) as f:
+        for i, line in enumerate(f, 1):
+            if i == n:
+                return json.loads(line)["op"] if line.strip() else None
+    return None
+
+
+def rejected_at(text, path):
+    """(operation, line) of a monitor rejection diagnosis `text`: the operation from
+    `operation N`, else from the event on its `line N` in the trace at `path`; each None if the
+    diagnosis does not give it."""
+    o = re.search(r"operation (\d+)", text)
+    ln = re.search(r"line (\d+)", text)
+    line = int(ln.group(1)) if ln else None
+    if o:
+        return int(o.group(1)), line
+    return (op_at_line(path, line) if line else None), line
+
+
+def report_rejects(report, trace, session=1):
+    """Map party to its row text ("ACCEPTED ..." or "REJECTED: ...") for session `session` of
+    `trace` in a Lean monitor report."""
+    want = os.path.realpath(trace)
+    current, rows = False, {}
+    pat = re.compile(r"^\s+session (\d+) party (\w+): (.*)$")
+    with open(report) as f:
+        for line in f:
+            if not line.startswith(" ") and ".jsonl: " in line:
+                current = os.path.realpath(line.split(": ")[0]) == want
+                continue
+            m = pat.match(line.rstrip("\n"))
+            if current and m and int(m.group(1)) == session:
+                rows[m.group(2)] = m.group(3)
+    return rows
+
+
+def main(argv):
+    """`verdict REPORT TRACE PARTY` prints "accepted", "OP LINE" (LINE is - when the report
+    gives none) or "rejected" (no operation); nothing if the party has no row.
+    `last-reject REPORT TRACE [PARTY]` prints the largest rejected operation of session 1, of
+    PARTY if given, or 0."""
+    cmd, report, trace = argv[0], argv[1], argv[2]
+    rows = report_rejects(report, trace)
+    if cmd == "verdict":
+        row = rows.get(argv[3])
+        if row is None:
+            return
+        if row.startswith("ACCEPTED"):
+            print("accepted")
+            return
+        op, line = rejected_at(row, trace)
+        print("rejected" if op is None else f"{op} {line if line else '-'}")
+    elif cmd == "last-reject":
+        ops = [rejected_at(r, trace)[0] for p, r in rows.items()
+               if r.startswith("REJECTED") and (len(argv) < 4 or p == argv[3])]
+        print(max([o for o in ops if o is not None], default=0))
+    else:
+        raise SystemExit(f"unknown command {cmd}")
+
+
+if __name__ == "__main__":
+    main(sys.argv[1:])

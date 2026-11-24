@@ -27,7 +27,8 @@ from collections import deque
 from html import escape
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from spqr_trace import LABELS, STEP_FUNCS, operations, short_label  # noqa: E402
+from spqr_trace import (LABELS, STEP_FUNCS, operations, rejected_at,  # noqa: E402
+                        short_label)
 
 # Blues for the half that sends the encapsulation key, oranges for the half that sends the
 # ciphertext.
@@ -100,9 +101,8 @@ def parse_report(path, trace, session):
             if not m or not current or int(m.group(1)) != session:
                 continue
             text = m.group(3)
-            o = re.search(r"operation (\d+)", text)
             diag = text.split(": ", 1)[1] if ": " in text else text
-            rejects[m.group(2)] = (int(o.group(1)) if o else None, diag)
+            rejects[m.group(2)] = (rejected_at(text, trace)[0], diag)
     return rejects
 
 

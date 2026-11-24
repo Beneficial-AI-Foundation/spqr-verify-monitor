@@ -122,7 +122,10 @@ def steps(path: str, session: int, any_mac_form: bool = False):
         else:
             st.update(kind=VEIL_KINDS[msg["kind"]], rel=rel_of(msg["epoch"], pre_epoch))
             if "err" in ret:
-                st.update(action="recvErr", key=False,
+                # A failed receive that also reports a result gets a key, which no failing
+                # action emits, so its window is unsatisfiable.
+                mixed = any(f in ret for f in ("key", "state", "epoch"))
+                st.update(action="recvErr", key=mixed,
                           label=VEIL_LABELS[pre_label], epoch=pre_epoch)
             else:
                 st.update(action="recv", key=ret["key"] is not None,

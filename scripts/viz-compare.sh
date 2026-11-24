@@ -55,19 +55,8 @@ fail() { echo "viz-compare: $*" >&2; kill -TERM $$; exit 1; }
 lean_verdict() {
   local report=$OUT_DIR/$1/report.txt trace=$OUT_DIR/$1/traces/$2 v
   [ -f "$report" ] || fail "missing $report"
-  v=$(awk -v hdr="$trace:" -v p="$3" '
-    index($0, hdr) == 1 { on = 1; next }
-    on && !/^ / { on = 0 }
-    on && $0 ~ "^  session 1 party " p ": " {
-      if (match($0, /operation [0-9]+/)) {
-        op = substr($0, RSTART + 10, RLENGTH - 10); line = "-"
-        if (match($0, /operation [0-9]+ \(line [0-9]+\)/)) {
-          split(substr($0, RSTART, RLENGTH), w, /[ ()]+/); line = w[4]
-        }
-        print op, line
-      } else if (/ACCEPTED/) print "accepted"
-      exit
-    }' "$report")
+  v=$(python3 -I "$REPO/scripts/spqr_trace.py" verdict "$report" "$trace" "$3") ||
+    fail "cannot read $report"
   [ -n "$v" ] || fail "no Lean verdict for $trace party $3 in $report"
   echo "$v"
 }
@@ -126,6 +115,7 @@ veil_verdict() {
 
 fmt() {  # "OP LINE" -> "op OP (line LINE)"
   if [ "$1" = accepted ] || [ -z "$1" ]; then echo "${1:-none}"; return; fi
+  if [ "$1" = rejected ]; then echo "rejected, no operation"; return; fi
   set -- $1
   if [ "$2" = - ]; then echo "op $1"; else echo "op $1 (line $2)"; fi
 }
@@ -143,7 +133,7 @@ for c in "${CASES[@]}"; do
   case_ops=0
   for p in A B; do
     lean[$p]=$(lean_verdict "$mut" "$trace" "$p")
-    [ "${lean[$p]}" != accepted ] || continue
+    [ "${lean[$p]}" != accepted ] && [ "${lean[$p]}" != rejected ] || continue
     op=${lean[$p]%% *}
     if (( op + MARGIN > case_ops )); then case_ops=$((op + MARGIN)); fi
     if [ -z "$first_op" ] || (( op < first_op )); then first_op=$op; first_party=$p; fi
@@ -159,7 +149,7 @@ for c in "${CASES[@]}"; do
   if (( case_ops > max_ops )); then max_ops=$case_ops; fi
   for p in A B; do
     # A party that Lean accepts is replayed with the bound of the other party.
-    if [ "${lean[$p]}" = accepted ]; then n=$case_ops; else n=$(( ${lean[$p]%% *} + MARGIN )); fi
+    if [ "${lean[$p]}" = accepted ] || [ "${lean[$p]}" = rejected ]; then n=$case_ops; else n=$(( ${lean[$p]%% *} + MARGIN )); fi
     t0=$(date +%s)
     up=$(uppaal_verdict "$mut" "$trace" "$p" "$n")
     secs=$(( $(date +%s) - t0 ))

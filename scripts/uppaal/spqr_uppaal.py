@@ -20,7 +20,8 @@ Subcommands (run with `python3 -I scripts/uppaal/spqr_uppaal.py ...`):
 
   model OUT.xml
       The free model: Alice, Bob and a network that can deliver any sent
-      message (loss, duplication, reordering), with EMAX = 3. For the simulator.
+      message of an epoch up to EMAX = 3 (loss, duplication, reordering). For the
+      simulator.
 
   trace TRACE.jsonl OUT.xml [--max-ops N] [--party A|B] [--drop-idle]
                             [--data control|calls|formula]
@@ -348,7 +349,7 @@ def net_template():
                           nails=[(300, ly - 20)], lx=250, ly=ly - 45))
         parts.append(edge(f"L{k}", "Idle", sync="deliver[d_p]!", nails=[(340, ly + 20)]))
     return ('<template><name x="5" y="5">Net</name>'
-            '<declaration>// delivers any message that was sent: loss, duplication and '
+            '<declaration>// delivers any sent message of an epoch up to EMAX: loss, duplication and '
             'reordering are allowed\n'
             'bool mayDeliver(int p, int e, int k) {\n'
             '    return (!CHECK_DELIVERY || (TRACE &amp;&amp; k == K_NONE) || sent[1 - p][e][k])\n'
@@ -406,11 +407,9 @@ class Step:
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
-def ct_body(ct1, enc2):
-    """ct1 || ct2 with ct2 from the logged `encaps2` call, or None if either is missing."""
-    if ct1 is None or not enc2:
-        return None
-    return ct1 + hexb(enc2[0]["ret"])
+def ct2_of(enc2):
+    """ct2 from the logged `encaps2` call, or None."""
+    return hexb(enc2[0]["ret"]) if enc2 else None
 
 
 def steps_of(path, max_ops, data):
@@ -442,7 +441,7 @@ def steps_of(path, max_ops, data):
             c = ct1_own[p]
             return c[1] if c is not None and c[0] == epoch else None
 
-        def mac_tok(label, epoch, body, received_mac, code_ok):
+        def mac_tok(label, epoch, parts, received_mac, code_ok):
             """Token of a MAC computation or check."""
             if data == "control":
                 return T_OK if code_ok else T_BAD
@@ -450,10 +449,11 @@ def steps_of(path, max_ops, data):
                 if not hmacs:
                     return T_MISS
                 return T_OK if code_ok else T_BAD
-            size = HDR_SIZE if label == HDR_LABEL else CT1_SIZE + CT2_SIZE
-            if body is None or len(body) != size:
+            # the operands: hdr for MacHdr, ct1 and ct2 for MacCt, each of its own length
+            sizes = [HDR_SIZE] if label == HDR_LABEL else [CT1_SIZE, CT2_SIZE]
+            if any(x is None or len(x) != n for x, n in zip(parts, sizes)):
                 return T_MISS
-            want = mac_input(label, epoch, body)
+            want = mac_input(label, epoch, b"".join(parts))
             hit = [h for h in hmacs if hexb(h["args"][1]) == want]
             if not hit:
                 return T_MISS
@@ -472,7 +472,7 @@ def steps_of(path, max_ops, data):
             tok = T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
                 hdr = hexb(gen[0]["ret"][1]) if gen else None
-                tok = mac_tok(HDR_LABEL, pre[1], hdr, None, True)
+                tok = mac_tok(HDR_LABEL, pre[1], [hdr], None, True)
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, SEND, KIND[m["kind"]], m["epoch"], tok, LAB[r["state"]],
                             r["epoch"], key, st["line"], pre))
@@ -500,10 +500,9 @@ def steps_of(path, max_ops, data):
                         tok = T_OK
                     elif lab == LAB["EkSentCt1Received"]:
                         c1 = ct1_recv[p][1] if ct1_recv[p] and ct1_recv[p][0] == e else None
-                        tok = mac_tok(CT_LABEL, e, None if c1 is None else c1 + msg[:CT2_SIZE],
-                                      msg[CT2_SIZE:], ok)
+                        tok = mac_tok(CT_LABEL, e, [c1, msg[:CT2_SIZE]], msg[CT2_SIZE:], ok)
                     elif lab == LAB["NoHeaderReceived"]:
-                        tok = mac_tok(HDR_LABEL, e, msg[:HDR_SIZE], msg[HDR_SIZE:], ok)
+                        tok = mac_tok(HDR_LABEL, e, [msg[:HDR_SIZE]], msg[HDR_SIZE:], ok)
                     else:
                         if data == "control":
                             ek_ok = ok
@@ -518,9 +517,9 @@ def steps_of(path, max_ops, data):
                         elif lab == LAB["Ct1Sampled"] and k == KIND["ek"]:
                             tok = T_OK                                       # (10)
                         else:                                                # (9), (11)
-                            tok = mac_tok(CT_LABEL, e, ct_body(own_ct1(e), enc2), None, ok)
+                            tok = mac_tok(CT_LABEL, e, [own_ct1(e), ct2_of(enc2)], None, ok)
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
-                tok = mac_tok(CT_LABEL, e, ct_body(own_ct1(e), enc2), None, ok)   # (12)
+                tok = mac_tok(CT_LABEL, e, [own_ct1(e), ct2_of(enc2)], None, ok)   # (12)
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,
@@ -586,7 +585,7 @@ def observer_template(steps):
 def trace_model(steps, party):
     decl = declarations(True, party is None, len(steps))
     system = "Alice = Party(A);\nBob = Party(B);\nsystem Obs, Alice, Bob, Net;\n"
-    queries = [("E<> Obs.done", "the whole trace is a run of the model"),
+    queries = [("E<> Obs.done", "every selected step of the trace matches a model run"),
                ("sup: matched", "the largest number of matched steps")]
     return document([decl, party_template(), net_template(), observer_template(steps)],
                     system, queries)

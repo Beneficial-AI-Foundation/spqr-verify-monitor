@@ -11,8 +11,9 @@ script reads traces with `scripts/spqr_trace.py`.
 The system has three processes. `Alice` and `Bob` are instances of the
 template `Party`. It has one location per `Label` and one edge per
 numbered transition (1) to (13) of `send` and `receive`. `Net` stores the
-sent messages and delivers any of them, so loss, duplication and
-reordering are possible. The model has no clocks.
+sent messages and delivers any of them with an epoch up to `EMAX`, so loss,
+duplication and reordering are possible. In the free model (`EMAX` = 3), a
+message of epoch 4 is stored but not delivered. The model has no clocks.
 
 The data is abstract:
 
@@ -47,8 +48,9 @@ the trace. It has one location `step_k` per step: k steps matched, step k
 expected. Each edge of `Obs` checks the state, epoch and key after a step
 and announces the next one, with the party's logged state and epoch before
 it; a party takes the step only from that state. A key absent is -1, so a
-key of epoch 0 differs from no key. `E<> Obs.done` holds if the whole trace is a run of the
-model. `sup: matched` gives the largest k. If k is below the number of
+key of epoch 0 differs from no key. `E<> Obs.done` holds if every selected
+step matches a model run: the steps of the first session up to `--max-ops`,
+of one party with `--party`, without the idle steps with `--drop-idle`. `sup: matched` gives the largest k. If k is below the number of
 steps, step k is the rejected step. `check` runs `verifyta` (path in
 `$VERIFYTA`) and writes a witness as a `.xtr` file, which the Symbolic
 Simulator opens: of `E<> Obs.step_k` (the prefix up to the rejected step k)
@@ -83,6 +85,10 @@ from the trace directory name, so give each trace its own `--workdir`.
   reason, a receive with two `hmac` calls over the same input that disagree
   on the received MAC gets `T_MISS`, where the Lean monitor, which keys its
   table by the key and the input, can accept.
+- Operand lengths go the other way: `formula` requires `hdr`, `ct1` and
+  `ct2` of 64, 960 and 128 bytes. `BraidModel` treats primitive outputs as
+  abstract bytes, so the Lean monitor accepts an operation whose `ct1` and
+  `ct2` have other lengths but the same concatenation, and UPPAAL rejects it.
 - Chunk contents and indices: erasure coding is one token per step, and a
   receive needs only some sent message of the same epoch and kind.
 - Delivery of `none` messages in trace mode: they need no prior send.

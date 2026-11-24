@@ -29,10 +29,12 @@ From the root of this repository:
 python3 -I viz/veil/trace2veil.py search TRACE.jsonl --veil VEIL_DIR --steps N --jobs 2
 ```
 
-`search` cuts the first N steps of session 1 into windows of 12 steps.
-Each window is one query. It starts from the state that the log gives
-before the window: each party's state and epoch, and the messages sent so
-far. Every other `sent` entry is false. In a query, each step is an action
+`search` takes the first N kept steps of session 1 (after dropping the
+repeated self-loops, see the docstring of `trace2veil.py`) and cuts them
+into windows of 12 steps. Each window is one query. It starts from the
+state that the log gives before the window: each party's state and epoch,
+and the messages sent so far in an epoch at least the smaller of the two
+parties' epochs. Every other `sent` entry is false. In a query, each step is an action
 between two asserts: the first pins the party's logged state and epoch
 before the step, the second the logged result after it. The script bisects the first window with no model and
 prints the first step with no model: its trace line, party and operation.

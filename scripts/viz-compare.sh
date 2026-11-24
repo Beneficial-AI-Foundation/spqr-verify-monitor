@@ -10,7 +10,8 @@
 #
 # For each case and party, the script prints the operation and trace line where the Lean
 # monitor and UPPAAL reject session 1, or "accepted". Veil gets one row per case, for both
-# parties (party column AB): the first rejection in trace order, or "windows satisfiable".
+# parties: the party and operation of the first rejection in trace order, or "windows
+# satisfiable" with the party column AB.
 #
 # Prerequisites:
 #   - python3.
@@ -141,7 +142,7 @@ for c in "${CASES[@]}"; do
     secs=$(( $(date +%s) - t0 ))
     veil=-
     if [ -n "$VEIL_DIR" ]; then veil="(next row)"; fi
-    row "$mut" "$trace" "$p" "$(fmt "${lean[$p]}")" "$(fmt "$up") ($n ops)" "$veil" \
+    row "$mut" "$trace" "$p" "$(fmt "${lean[$p]}")" "$(fmt "$up") (op limit $n)" "$veil" \
       "uppaal $secs"
   done
   unset lean
@@ -167,7 +168,7 @@ for p in A B; do
   t0=$(date +%s)
   up=$(uppaal_verdict honest v1.test.chaos.jsonl "$p" "$max_ops")
   secs=$(( $(date +%s) - t0 ))
-  row honest v1.test.chaos.jsonl "$p" "$(fmt "$lean")" "$(fmt "$up") ($max_ops ops)" - \
+  row honest v1.test.chaos.jsonl "$p" "$(fmt "$lean")" "$(fmt "$up") (op limit $max_ops)" - \
     "uppaal $secs"
   [ "$lean" = accepted ] && [ "$up" = accepted ] || honest_ok=false
 done

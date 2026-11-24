@@ -214,8 +214,8 @@ def start_states(sts, starts) -> dict:
     each party's state and epoch after its last step, and the messages sent so far in an epoch
     at least the smaller of the two epochs. One pass over the steps.
 
-    A receive checks `sent` only at the receiver's epoch, and epochs do not decrease, so the
-    older messages cannot change the result of a query."""
+    A receive checks `sent` only at the receiver's epoch or, at (13), the next one, and epochs
+    do not decrease, so the older messages cannot change the result of a query."""
     lab = {"A": "keysUnsampled", "B": "noHeaderReceived"}
     ep = {"A": 1, "B": 1}
     sent = set()

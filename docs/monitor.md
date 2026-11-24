@@ -270,8 +270,9 @@ the standard traces change from run to run (section 4).
 `scripts/viz-compare.sh` replays session 1 of four mutant traces, and of the honest `chaos`
 trace, in the UPPAAL model and in the Veil model. It prints one row per party with the operation
 where the Lean monitor and UPPAAL reject, and one row per case for Veil, which replays both
-parties together (party column `AB`): the first rejection in trace order, or
-"windows satisfiable". It reads the
+parties together: the party and operation of the first rejection in trace order, or
+"windows satisfiable" with the party column `AB`. The UPPAAL column gives the largest operation
+number of the replayed prefix as "op limit". It reads the
 output directory of section 5.
 
 Prerequisites:
@@ -316,8 +317,8 @@ window of the checked prefix is satisfiable.
 | R3, `chaos` | A | op 583 | op 583 | not reached |
 | R3, `chaos` | B | op 523 | op 523 | op 523 |
 | R4, `tamper_chaos` | A | op 546 | op 546 | windows satisfiable (141 steps) |
-| R4, `tamper_chaos` | B | accepted | prefix accepted (596 ops) | windows satisfiable (141 steps) |
-| honest, `chaos` | A, B | accepted | prefix accepted (1176 ops) | windows satisfiable (153 steps) |
+| R4, `tamper_chaos` | B | accepted | prefix accepted (op limit 596) | windows satisfiable (141 steps) |
+| honest, `chaos` | A, B | accepted | prefix accepted (op limit 1176) | windows satisfiable (153 steps) |
 
 In these cases, where the Lean monitor rejects, UPPAAL rejects at the same operation. Veil replays both parties
 together and stops at the first rejection in trace order, so it reports one party per case

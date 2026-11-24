@@ -28,8 +28,9 @@ What it drops:
   `ek` and an `ek` message that the peer sent.
 - KEM correctness and key agreement. Two parties can emit keys for one epoch with no relation
   between them.
-- Delivery of older and later messages. Only messages of the receiver's epoch and the next
-  epoch are checked against what the peer sent.
+- Delivery of older and later messages. A successful receive of the receiver's epoch, and the
+  receive of the next epoch at (13), need a message that the peer sent; a receive of an older
+  epoch and a failed receive of a later epoch (`err_future`) do not.
 -/
 
 veil module SpqrBraid

@@ -340,7 +340,7 @@ def net_template():
         ly = -270 + i * 90
         parts.append(f'<location id="L{k}" x="520" y="{ly}"><name x="540" y="{ly - 10}">'
                      f'deliver_{k}</name><committed/></location>')
-        parts.append(edge("Idle", f"L{k}", select="p : int[0, 1], e : int[1, EMAX]",
+        parts.append(edge("Idle", f"L{k}", select="p : int[0, 1], e : int[0, EMAX]",
                           guard=f"mayDeliver(p, e, K_{k.upper()})",
                           update=f"d_p = p, d_ep = e, d_kind = K_{k.upper()}",
                           nails=[(300, ly - 20)], lx=250, ly=ly - 45))
@@ -404,10 +404,17 @@ class Step:
                 f"in {LABELS[self.pre[0]]} epoch {self.pre[1]}, token {TOK_NAMES[self.tok]} {res}")
 
 
+def ct_body(ct1, enc2):
+    """ct1 || ct2 with ct2 from the logged `encaps2` call, or None if either is missing."""
+    if ct1 is None or not enc2:
+        return None
+    return ct1 + hexb(enc2[0]["ret"])
+
+
 def steps_of(path, max_ops, data):
     """The steps of the first session in the trace at `path`, with the data token of each."""
-    ct1_recv = {0: None, 1: None}   # ct1 a party decoded at (3)
-    ct1_own = {0: None, 1: None}    # ct1 a party sampled at (7)
+    ct1_recv = {0: None, 1: None}   # (epoch, ct1) that a party decoded at (3)
+    ct1_own = {0: None, 1: None}    # (epoch, ct1) that a party sampled at (7)
     out = []
     for es in operations(path):
         op = es[0]["op"]
@@ -425,8 +432,13 @@ def steps_of(path, max_ops, data):
         enc1 = [e for e in es if e["f"] == "mlkem.encaps1"]
         enc2 = [e for e in es if e["f"] == "mlkem.encaps2"]
         ekm = [e for e in es if e["f"] == "mlkem.ek_matches_header"]
-        if enc1:
-            ct1_own[p] = hexb(enc1[0]["ret"][1])
+        if st["f"] == "States::send" and pre[0] == LAB["HeaderReceived"] and enc1:
+            ct1_own[p] = (pre[1], hexb(enc1[0]["ret"][1]))
+
+        def own_ct1(epoch):
+            """The ct1 that this party sampled at (7) in `epoch`, or None."""
+            c = ct1_own[p]
+            return c[1] if c is not None and c[0] == epoch else None
 
         def mac_tok(label, epoch, body, received_mac, code_ok):
             """Token of a MAC computation or check."""
@@ -436,6 +448,8 @@ def steps_of(path, max_ops, data):
                 if not hmacs:
                     return T_MISS
                 return T_OK if code_ok else T_BAD
+            if body is None:
+                return T_MISS
             want = mac_input(label, epoch, body)
             hit = [h for h in hmacs if hexb(h["args"][1]) == want]
             if not hit:
@@ -450,7 +464,7 @@ def steps_of(path, max_ops, data):
             m = r["msg"]
             tok = T_NONE
             if pre[0] == LAB["KeysUnsampled"]:
-                hdr = hexb(gen[0]["ret"][1]) if gen else b""
+                hdr = hexb(gen[0]["ret"][1]) if gen else None
                 tok = mac_tok(HDR_LABEL, pre[1], hdr, None, True)
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, SEND, KIND[m["kind"]], m["epoch"], tok, LAB[r["state"]],
@@ -475,10 +489,11 @@ def steps_of(path, max_ops, data):
                 else:
                     msg = hexb(decoded[0]["ret"])
                     if lab == LAB["HeaderSent"]:
-                        ct1_recv[p] = msg
+                        ct1_recv[p] = (e, msg)
                         tok = T_OK
                     elif lab == LAB["EkSentCt1Received"]:
-                        tok = mac_tok(CT_LABEL, e, (ct1_recv[p] or b"") + msg[:CT2_SIZE],
+                        c1 = ct1_recv[p][1] if ct1_recv[p] and ct1_recv[p][0] == e else None
+                        tok = mac_tok(CT_LABEL, e, None if c1 is None else c1 + msg[:CT2_SIZE],
                                       msg[CT2_SIZE:], ok)
                     elif lab == LAB["NoHeaderReceived"]:
                         tok = mac_tok(HDR_LABEL, e, msg[:HDR_SIZE], msg[HDR_SIZE:], ok)
@@ -496,11 +511,9 @@ def steps_of(path, max_ops, data):
                         elif lab == LAB["Ct1Sampled"] and k == KIND["ek"]:
                             tok = T_OK                                       # (10)
                         else:                                                # (9), (11)
-                            ct2 = hexb(enc2[0]["ret"]) if enc2 else b""
-                            tok = mac_tok(CT_LABEL, e, (ct1_own[p] or b"") + ct2, None, ok)
+                            tok = mac_tok(CT_LABEL, e, ct_body(own_ct1(e), enc2), None, ok)
             elif lab == LAB["EkReceivedCt1Sampled"] and k in (KIND["ekct1ack"], KIND["ct1ack"]):
-                ct2 = hexb(enc2[0]["ret"]) if enc2 else b""                  # (12)
-                tok = mac_tok(CT_LABEL, e, (ct1_own[p] or b"") + ct2, None, ok)
+                tok = mac_tok(CT_LABEL, e, ct_body(own_ct1(e), enc2), None, ok)   # (12)
         if ok:
             key = r["key"]["epoch"] if r.get("key") else -1
             out.append(Step(op, p, RECV, k, m["epoch"], tok, LAB[r["state"]], r["epoch"], key,
@@ -580,7 +593,14 @@ def build(args):
         p = 0 if args.party == "A" else 1
         steps = [s for s in steps if s.party == p]
     if args.drop_idle:
-        steps = [s for s in steps if not is_idle(s)]
+        # drop an idle step only from the state that the earlier steps of its party give
+        cur = {0: (LAB["KeysUnsampled"], 1), 1: (LAB["NoHeaderReceived"], 1)}
+        kept = []
+        for s in steps:
+            if not (is_idle(s) and s.pre == cur[s.party]):
+                kept.append(s)
+            cur[s.party] = (s.label, s.epoch)
+        steps = kept
     if not steps:
         sys.exit(f"{args.trace}: no steps selected")
     global EMAX

@@ -49,8 +49,9 @@ it; a party takes the step only from that state. A key absent is -1, so a
 key of epoch 0 differs from no key. `E<> Obs.done` holds if the whole trace is a run of the
 model. `sup: matched` gives the largest k. If k is below the number of
 steps, step k is the rejected step. `check` runs `verifyta` (path in
-`$VERIFYTA`) and writes the witness of `E<> Obs.step_k` (the prefix up to
-the rejection) as a `.xtr` file, which the Symbolic Simulator opens.
+`$VERIFYTA`) and writes a witness as a `.xtr` file, which the Symbolic
+Simulator opens: of `E<> Obs.step_k` (the prefix up to the rejected step k)
+when a step is rejected, and of `E<> Obs.done` when every step matches.
 
 ```bash
 export VERIFYTA=/opt/uppaal/lib/app/bin/verifyta
